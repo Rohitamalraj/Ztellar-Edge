@@ -1,0 +1,4 @@
+# Circuit artifacts go here after running circuits/scripts/compile.sh + setup.sh:
+#   tier_proof.wasm        (from circuits/build/tier_proof_js/)
+#   tier_proof_0001.zkey   (from circuits/keys/)
+#   verification_key.json  (from circuits/keys/)
