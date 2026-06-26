@@ -1,0 +1,15 @@
+{
+  "name": "ztellar-circuits",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Circom circuits for Ztellar Edge ZK tier proofs",
+  "scripts": {
+    "compile": "bash scripts/compile.sh",
+    "setup": "bash scripts/setup.sh",
+    "test-proof": "node scripts/test_proof.js"
+  },
+  "devDependencies": {
+    "circomlib": "^2.0.5",
+    "snarkjs": "^0.7.5"
+  }
+}
