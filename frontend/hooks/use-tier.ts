@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
+import { readTier } from "@/lib/stellar"
 
 export type TierNumber = 0 | 1 | 2 | 3 | 4
 
@@ -52,9 +53,29 @@ export function useTier(publicKey: string | null) {
     if (!publicKey) return
     setIsLoading(true)
     try {
-      // TODO: call tier_manager Soroban contract get_tier(publicKey)
-      // For now stubbed — replace with actual Soroban RPC call
-      await new Promise((r) => setTimeout(r, 500))
+      // Try on-chain first (tier_manager contract)
+      const onChainTier = await readTier(publicKey)
+      if (onChainTier > 0) {
+        setTier(onChainTier as TierNumber)
+        // Expiry comes from localStorage (written after ZK proof submission)
+        const stored = localStorage.getItem(`ztellar_tier_${publicKey}`)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          setExpiry(parsed.expiry ?? null)
+        }
+        return
+      }
+      // Fall back to localStorage if contract returns 0 (unverified)
+      const stored = localStorage.getItem(`ztellar_tier_${publicKey}`)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed.expiry > Date.now() / 1000) {
+          setTier(parsed.tier as TierNumber)
+          setExpiry(parsed.expiry)
+        }
+      }
+    } catch {
+      // Network error — fall back to localStorage
       const stored = localStorage.getItem(`ztellar_tier_${publicKey}`)
       if (stored) {
         const parsed = JSON.parse(stored)
@@ -67,6 +88,11 @@ export function useTier(publicKey: string | null) {
       setIsLoading(false)
     }
   }, [publicKey])
+
+  // Auto-refresh when wallet connects
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   const setVerifiedTier = useCallback(
     (t: TierNumber, exp: number) => {

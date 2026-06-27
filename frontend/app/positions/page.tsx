@@ -7,25 +7,24 @@ import { StatsBar } from "@/components/dashboard/stats-bar"
 import { useFreighter } from "@/hooks/use-freighter"
 import { useTier } from "@/hooks/use-tier"
 import { usePositions } from "@/hooks/use-positions"
-import { MOCK_ASSETS } from "@/components/dashboard/markets-panel"
+import { usePrices } from "@/hooks/use-prices"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
 export default function PositionsPage() {
   const { publicKey, isConnected } = useFreighter()
   const { tier, isVerified } = useTier(publicKey)
-  const { positions, closePosition } = usePositions()
-
-  const PRICE_MAP: Record<string, number> = Object.fromEntries(
-    MOCK_ASSETS.map((a) => [a.symbol, a.price]),
-  )
+  const { positions, closePosition } = usePositions(publicKey)
+  const prices = usePrices(publicKey)
 
   const handleClose = async (id: string) => {
     try {
-      await closePosition(id)
-      toast.success("Position closed")
-    } catch {
-      toast.error("Failed to close position")
+      const pnl = await closePosition(id)
+      const sign = pnl >= 0 ? "+" : ""
+      toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to close position"
+      toast.error(msg)
     }
   }
 
@@ -33,7 +32,7 @@ export default function PositionsPage() {
     <>
       <DashboardNav tier={tier} isVerified={isVerified} />
       <div className="pt-[72px] min-h-screen">
-        <StatsBar positions={positions} />
+        <StatsBar positions={positions} prices={prices} />
         <div className="max-w-[1400px] mx-auto px-6 py-8">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -67,7 +66,7 @@ export default function PositionsPage() {
                 <PositionCard
                   key={position.id}
                   position={position}
-                  currentPrice={PRICE_MAP[position.asset] ?? position.entryPrice}
+                  currentPrice={prices[position.asset]?.price ?? position.entryPrice}
                   onClose={handleClose}
                 />
               ))}

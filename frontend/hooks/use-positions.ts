@@ -1,18 +1,22 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
+import {
+  openVaultPosition,
+  closeVaultPosition,
+  getWalletPositionIds,
+  getVaultPosition,
+  ASSET_ID,
+  DIR_ID,
+  type VaultPosition,
+} from "@/lib/stellar"
 
 export type AssetSymbol = "sAAPL" | "sTSLA" | "sNVDA"
 export type Direction = "LONG" | "SHORT"
 
-export interface Position {
-  id: string
+export interface Position extends VaultPosition {
   asset: AssetSymbol
   direction: Direction
-  leverage: number
-  entryPrice: number
-  collateralUSDC: number
-  openedAt: Date
 }
 
 export function calcPnl(position: Position, currentPrice: number): number {
@@ -25,12 +29,41 @@ export function calcHealthFactor(position: Position, currentPrice: number): numb
   const pnl = calcPnl(position, currentPrice)
   const equity = position.collateralUSDC + pnl
   const notional = position.collateralUSDC * position.leverage
+  if (notional === 0) return 1
   return equity / notional
 }
 
-export function usePositions() {
+export function usePositions(publicKey: string | null) {
   const [positions, setPositions] = useState<Position[]>([])
   const [isOpening, setIsOpening] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Load positions from chain whenever wallet connects
+  const loadPositions = useCallback(async () => {
+    if (!publicKey) {
+      setPositions([])
+      return
+    }
+    setIsLoading(true)
+    try {
+      const ids = await getWalletPositionIds(publicKey)
+      if (ids.length === 0) {
+        setPositions([])
+        return
+      }
+      const settled = await Promise.all(ids.map((id) => getVaultPosition(id, publicKey)))
+      const live = settled.filter(Boolean) as VaultPosition[]
+      setPositions(live as Position[])
+    } catch {
+      // Network issue — keep current state
+    } finally {
+      setIsLoading(false)
+    }
+  }, [publicKey])
+
+  useEffect(() => {
+    loadPositions()
+  }, [loadPositions])
 
   const openPosition = useCallback(
     async (
@@ -38,35 +71,38 @@ export function usePositions() {
       direction: Direction,
       leverage: number,
       collateralUSDC: number,
-      entryPrice: number,
+      _entryPrice: number  // unused — vault reads on-chain price
     ) => {
+      if (!publicKey) throw new Error("Wallet not connected")
       setIsOpening(true)
       try {
-        // TODO: call synth_vault Soroban contract open_position()
-        await new Promise((r) => setTimeout(r, 1200))
-        const newPosition: Position = {
-          id: crypto.randomUUID(),
-          asset,
-          direction,
+        const positionId = await openVaultPosition(
+          publicKey,
+          ASSET_ID[asset],
+          DIR_ID[direction],
           leverage,
-          entryPrice,
-          collateralUSDC,
-          openedAt: new Date(),
-        }
-        setPositions((prev) => [newPosition, ...prev])
-        return newPosition
+          collateralUSDC
+        )
+        // Refresh from chain so the new position appears with correct entry price
+        await loadPositions()
+        return positionId
       } finally {
         setIsOpening(false)
       }
     },
-    [],
+    [publicKey, loadPositions]
   )
 
-  const closePosition = useCallback(async (id: string) => {
-    // TODO: call synth_vault Soroban contract close_position()
-    await new Promise((r) => setTimeout(r, 800))
-    setPositions((prev) => prev.filter((p) => p.id !== id))
-  }, [])
+  const closePosition = useCallback(
+    async (id: string) => {
+      if (!publicKey) throw new Error("Wallet not connected")
+      const pnl = await closeVaultPosition(publicKey, id)
+      // Remove locally immediately, then sync from chain
+      setPositions((prev) => prev.filter((p) => p.id !== id))
+      return pnl
+    },
+    [publicKey]
+  )
 
-  return { positions, isOpening, openPosition, closePosition }
+  return { positions, isOpening, isLoading, openPosition, closePosition, loadPositions }
 }

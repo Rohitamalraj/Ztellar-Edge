@@ -1,21 +1,20 @@
 "use client"
 
 import { type AssetSymbol } from "@/hooks/use-positions"
-import { MOCK_ASSETS } from "./markets-panel"
 
 interface PriceChartProps {
   asset: AssetSymbol
+  price: number
+  change24h: number
 }
 
-export function PriceChart({ asset }: PriceChartProps) {
-  const info = MOCK_ASSETS.find((a) => a.symbol === asset)
-  const isPositive = (info?.change24h ?? 0) >= 0
+export function PriceChart({ asset, price, change24h }: PriceChartProps) {
+  const isPositive = change24h >= 0
 
-  // Simple sparkline using random-ish path for demo
+  // Sparkline based on current price with a sine-wave shape for visual demo
   const points = Array.from({ length: 60 }, (_, i) => {
-    const base = info?.price ?? 200
-    const noise = Math.sin(i * 0.4) * base * 0.02 + Math.sin(i * 0.15) * base * 0.03
-    return base + noise
+    const noise = Math.sin(i * 0.4) * price * 0.02 + Math.sin(i * 0.15) * price * 0.03
+    return price + noise
   })
   const min = Math.min(...points)
   const max = Math.max(...points)
@@ -31,11 +30,11 @@ export function PriceChart({ asset }: PriceChartProps) {
         <div className="flex items-center gap-3">
           <span className="font-mono text-sm font-medium">{asset}</span>
           <span className={`font-mono text-xs ${isPositive ? "text-green-700" : "text-red-600"}`}>
-            {isPositive ? "+" : ""}{info?.change24h.toFixed(2)}%
+            {isPositive ? "+" : ""}{change24h.toFixed(2)}%
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-lg font-semibold">${info?.price.toFixed(2)}</span>
+          <span className="font-mono text-lg font-semibold">${price.toFixed(2)}</span>
           <span className="font-mono text-[10px] text-muted-foreground border border-foreground/10 px-2 py-0.5">1D</span>
         </div>
       </div>
@@ -70,7 +69,7 @@ export function PriceChart({ asset }: PriceChartProps) {
       </div>
 
       <div className="px-4 py-2 border-t border-foreground/10">
-        <p className="font-mono text-[10px] text-muted-foreground">Demo chart · Connect to Reflector for live data</p>
+        <p className="font-mono text-[10px] text-muted-foreground">Synth Vault price · Testnet</p>
       </div>
     </div>
   )

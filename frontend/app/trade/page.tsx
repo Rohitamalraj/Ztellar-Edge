@@ -12,32 +12,35 @@ import { StatsBar } from "@/components/dashboard/stats-bar"
 import { useFreighter } from "@/hooks/use-freighter"
 import { useTier } from "@/hooks/use-tier"
 import { usePositions, type AssetSymbol, type Direction } from "@/hooks/use-positions"
-import { MOCK_ASSETS } from "@/components/dashboard/markets-panel"
+import { usePrices } from "@/hooks/use-prices"
 
 export default function TradePage() {
   const { isConnected, publicKey } = useFreighter()
-  const { tier, isVerified, leverageCap } = useTier(publicKey)
-  const { positions, isOpening, openPosition, closePosition } = usePositions()
+  const { tier, isVerified } = useTier(publicKey)
+  const { positions, isOpening, openPosition, closePosition } = usePositions(publicKey)
+  const prices = usePrices(publicKey)
   const [selectedAsset, setSelectedAsset] = useState<AssetSymbol>("sAAPL")
 
-  const assetData = MOCK_ASSETS.find((a) => a.symbol === selectedAsset)
-  const price = assetData?.price ?? 0
+  const currentPrice = prices[selectedAsset].price
 
   const handleOpenPosition = async (direction: Direction, leverage: number, collateral: number) => {
     try {
-      await openPosition(selectedAsset, direction, leverage, collateral, price)
+      await openPosition(selectedAsset, direction, leverage, collateral, currentPrice)
       toast.success(`${direction} ${selectedAsset} ${leverage}x opened`)
-    } catch {
-      toast.error("Failed to open position")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to open position"
+      toast.error(msg)
     }
   }
 
   const handleClosePosition = async (id: string) => {
     try {
-      await closePosition(id)
-      toast.success("Position closed")
-    } catch {
-      toast.error("Failed to close position")
+      const pnl = await closePosition(id)
+      const sign = pnl >= 0 ? "+" : ""
+      toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to close position"
+      toast.error(msg)
     }
   }
 
@@ -45,16 +48,26 @@ export default function TradePage() {
     <>
       <DashboardNav tier={tier} isVerified={isVerified} />
       <div className="pt-[72px]">
-        <StatsBar positions={positions} />
+        <StatsBar positions={positions} prices={prices} />
         <TradingLayout
           leftPanel={
-            <MarketsPanel selected={selectedAsset} onSelect={setSelectedAsset} />
+            <MarketsPanel
+              selected={selectedAsset}
+              onSelect={setSelectedAsset}
+              prices={prices}
+            />
           }
-          centerPanel={<PriceChart asset={selectedAsset} />}
+          centerPanel={
+            <PriceChart
+              asset={selectedAsset}
+              price={prices[selectedAsset].price}
+              change24h={prices[selectedAsset].change24h}
+            />
+          }
           rightPanel={
             <TradeForm
               asset={selectedAsset}
-              price={price}
+              price={currentPrice}
               tier={tier}
               isConnected={isConnected}
               isVerified={isVerified}
@@ -63,7 +76,11 @@ export default function TradePage() {
             />
           }
           bottomPanel={
-            <PositionsPanel positions={positions} onClose={handleClosePosition} />
+            <PositionsPanel
+              positions={positions}
+              prices={prices}
+              onClose={handleClosePosition}
+            />
           }
         />
       </div>

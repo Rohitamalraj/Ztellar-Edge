@@ -1,19 +1,16 @@
 "use client"
 
 import { type Position } from "@/hooks/use-positions"
+import { type Prices } from "@/hooks/use-prices"
 import { PositionCard } from "./position-card"
-import { MOCK_ASSETS } from "./markets-panel"
 
 interface PositionsPanelProps {
   positions: Position[]
+  prices: Prices
   onClose: (id: string) => void
 }
 
-const PRICE_MAP: Record<string, number> = Object.fromEntries(
-  MOCK_ASSETS.map((a) => [a.symbol, a.price]),
-)
-
-export function PositionsPanel({ positions, onClose }: PositionsPanelProps) {
+export function PositionsPanel({ positions, prices, onClose }: PositionsPanelProps) {
   return (
     <div className="h-full border border-foreground/10 flex flex-col">
       <div className="px-4 py-3 border-b border-foreground/10 flex items-center justify-between shrink-0">
@@ -31,7 +28,7 @@ export function PositionsPanel({ positions, onClose }: PositionsPanelProps) {
             <PositionCard
               key={position.id}
               position={position}
-              currentPrice={PRICE_MAP[position.asset] ?? position.entryPrice}
+              currentPrice={prices[position.asset]?.price ?? position.entryPrice}
               onClose={onClose}
             />
           ))
