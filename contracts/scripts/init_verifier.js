@@ -67,15 +67,13 @@ function g1ToBuffer(point) {
 }
 
 function g2ToBuffer(point) {
-  // snarkjs: point = [[x_c1, x_c0], [y_c1, y_c0], ["1","0"]]
-  // Soroban Bls12381Fp2 = c0 (48 bytes) || c1 (48 bytes)
-  // So x = x_c0 || x_c1, y = y_c0 || y_c1
+  // snarkjs: point = [[x_c1, x_c0], [y_c1, y_c0], ["1","0"]]  (c1=imaginary at [0], c0=real at [1])
+  // Soroban Bls12381G2Affine = X_c1 || X_c0 || Y_c1 || Y_c0 (imaginary first — matches ZCash/blst)
   const x_c1 = decimalToBytes(point[0][0], FP_BYTES);
   const x_c0 = decimalToBytes(point[0][1], FP_BYTES);
   const y_c1 = decimalToBytes(point[1][0], FP_BYTES);
   const y_c0 = decimalToBytes(point[1][1], FP_BYTES);
-  // Fp2 encoding: c0 first then c1
-  return Buffer.concat([x_c0, x_c1, y_c0, y_c1]); // 192 bytes
+  return Buffer.concat([x_c1, x_c0, y_c1, y_c0]); // 192 bytes: c1 first
 }
 
 // ── XDR helpers ──────────────────────────────────────────────────────────────

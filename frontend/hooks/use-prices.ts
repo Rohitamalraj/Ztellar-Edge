@@ -1,83 +1,84 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import { getVaultPrice } from "@/lib/stellar"
+import { useState, useEffect, useRef } from "react"
 import type { AssetSymbol } from "./use-positions"
 
 export interface AssetPrice {
   price: number
-  change24h: number  // percentage
-  prev: number       // price from last tick (for colour flash)
+  change24h: number
+  prev: number
+  volume: number
 }
 
 export type Prices = Record<AssetSymbol, AssetPrice>
 
 const SEED: Prices = {
-  sAAPL: { price: 192.35, change24h: 1.24, prev: 192.35 },
-  sTSLA: { price: 248.12, change24h: -2.87, prev: 248.12 },
-  sNVDA: { price: 875.44, change24h: 3.15, prev: 875.44 },
+  sAAPL: { price: 192.35, change24h: 1.24, prev: 191.11, volume: 0 },
+  sTSLA: { price: 248.12, change24h: -2.87, prev: 255.43, volume: 0 },
+  sNVDA: { price: 875.44, change24h: 3.15, prev: 848.21, volume: 0 },
 }
 
 const ASSETS: AssetSymbol[] = ["sAAPL", "sTSLA", "sNVDA"]
-const ASSET_IDS: Record<AssetSymbol, number> = { sAAPL: 0, sTSLA: 1, sNVDA: 2 }
-const POLL_MS = 30_000  // re-fetch from chain every 30s
-const TICK_MS = 3_000   // random-walk tick every 3s (UI liveness)
+const POLL_MS = 10_000   // re-fetch real prices every 10s
+const TICK_MS = 2_000    // micro random-walk every 2s for live feel
 
-function randomWalk(price: number): number {
-  // ±0.12% per tick
-  const delta = price * (Math.random() * 0.0024 - 0.0012)
-  return Math.max(0.01, price + delta)
+function microWalk(price: number): number {
+  return Math.max(0.01, price * (1 + (Math.random() * 0.0006 - 0.0003)))
 }
 
-export function usePrices(publicKey: string | null): Prices {
+export function usePrices(_publicKey?: string | null): Prices {
   const [prices, setPrices] = useState<Prices>(SEED)
-  // store the "real" on-chain base prices separately from the ticked display prices
-  const baseRef = useRef<Record<AssetSymbol, number>>({
-    sAAPL: SEED.sAAPL.price,
-    sTSLA: SEED.sTSLA.price,
-    sNVDA: SEED.sNVDA.price,
-  })
-  const openRef = useRef<Record<AssetSymbol, number>>({
-    sAAPL: SEED.sAAPL.price,
-    sTSLA: SEED.sTSLA.price,
-    sNVDA: SEED.sNVDA.price,
-  })
+  const baseRef = useRef<Prices>(SEED)
 
-  const fetchFromChain = useCallback(async () => {
-    if (!publicKey) return
-    try {
-      const results = await Promise.all(
-        ASSETS.map((sym) => getVaultPrice(ASSET_IDS[sym], publicKey))
-      )
-      ASSETS.forEach((sym, i) => {
-        if (results[i] > 0) {
-          baseRef.current[sym] = results[i]
-          // treat the previous open price as the 24h open if we don't have a better source
-          openRef.current[sym] = openRef.current[sym] || results[i]
-        }
-      })
-    } catch {
-      // network error — keep current base
-    }
-  }, [publicKey])
-
-  // Pull from chain on connect + every 30s
+  // Fetch real prices from Yahoo Finance via API route
   useEffect(() => {
-    fetchFromChain()
-    const id = setInterval(fetchFromChain, POLL_MS)
-    return () => clearInterval(id)
-  }, [fetchFromChain])
+    let cancelled = false
 
-  // Random-walk tick every 3s so the UI looks alive
+    const fetchPrices = async () => {
+      try {
+        const res = await fetch("/api/prices")
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled) return
+
+        setPrices((prev) => {
+          const next = { ...prev }
+          ASSETS.forEach((sym) => {
+            const d = data[sym]
+            if (d && d.price > 0) {
+              next[sym] = {
+                price: d.price,
+                change24h: d.change24h,
+                prev: d.prev,
+                volume: d.volume ?? 0,
+              }
+            }
+          })
+          baseRef.current = next
+          return next
+        })
+      } catch {
+        // network error — keep current prices
+      }
+    }
+
+    fetchPrices()
+    const id = setInterval(fetchPrices, POLL_MS)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
+
+  // Micro-walk between API polls so numbers visibly move
   useEffect(() => {
     const id = setInterval(() => {
       setPrices((prev) => {
         const next = { ...prev }
         ASSETS.forEach((sym) => {
-          const ticked = randomWalk(prev[sym].price)
-          const open = openRef.current[sym]
-          const change24h = open > 0 ? ((ticked - open) / open) * 100 : 0
-          next[sym] = { price: ticked, change24h, prev: prev[sym].price }
+          const ticked = microWalk(prev[sym].price)
+          const base = baseRef.current[sym]
+          const change24h = base.prev > 0
+            ? ((ticked - base.prev) / base.prev) * 100
+            : prev[sym].change24h
+          next[sym] = { ...prev[sym], price: ticked, change24h }
         })
         return next
       })

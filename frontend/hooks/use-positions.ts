@@ -44,18 +44,22 @@ export function usePositions(publicKey: string | null) {
       setPositions([])
       return
     }
+    console.log("📊 [ZE] loadPositions — wallet:", publicKey)
     setIsLoading(true)
     try {
       const ids = await getWalletPositionIds(publicKey)
       if (ids.length === 0) {
+        console.log("📊 [ZE] loadPositions — no open positions")
         setPositions([])
         return
       }
+      console.log("📊 [ZE] loadPositions — fetching", ids.length, "positions:", ids)
       const settled = await Promise.all(ids.map((id) => getVaultPosition(id, publicKey)))
       const live = settled.filter(Boolean) as VaultPosition[]
+      console.log("✅ [ZE] loadPositions — loaded:", live)
       setPositions(live as Position[])
-    } catch {
-      // Network issue — keep current state
+    } catch (e) {
+      console.warn("📊 [ZE] loadPositions error:", e)
     } finally {
       setIsLoading(false)
     }
@@ -76,6 +80,7 @@ export function usePositions(publicKey: string | null) {
       if (!publicKey) throw new Error("Wallet not connected")
       setIsOpening(true)
       try {
+        console.log("📊 [ZE] openPosition:", { asset, direction, leverage, collateralUSDC })
         const positionId = await openVaultPosition(
           publicKey,
           ASSET_ID[asset],
@@ -83,6 +88,7 @@ export function usePositions(publicKey: string | null) {
           leverage,
           collateralUSDC
         )
+        console.log("✅ [ZE] openPosition — positionId:", positionId)
         // Refresh from chain so the new position appears with correct entry price
         await loadPositions()
         return positionId
@@ -96,7 +102,9 @@ export function usePositions(publicKey: string | null) {
   const closePosition = useCallback(
     async (id: string) => {
       if (!publicKey) throw new Error("Wallet not connected")
+      console.log("📊 [ZE] closePosition — id:", id)
       const pnl = await closeVaultPosition(publicKey, id)
+      console.log(`✅ [ZE] closePosition — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`)
       // Remove locally immediately, then sync from chain
       setPositions((prev) => prev.filter((p) => p.id !== id))
       return pnl

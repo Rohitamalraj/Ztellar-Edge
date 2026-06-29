@@ -55,20 +55,21 @@ export function g1ToBytes(point: [string, string, string]): Uint8Array {
   return out
 }
 
-// G2: [[x_c1, x_c0], [y_c1, y_c0], ["1","0"]] → 192 bytes
+// G2: [[c0_x, c1_x], [c0_y, c1_y], ["1","0"]] → 192 bytes
+// ffjavascript/snarkjs Fp2 JSON: [c0, c1] — c0 (real) at [0], c1 (imaginary) at [1]
+// Soroban Bls12381G2Affine (blst): X_c1 || X_c0 || Y_c1 || Y_c0 — imaginary FIRST
 export function g2ToBytes(
   point: [[string, string], [string, string], [string, string]]
 ): Uint8Array {
-  const x_c1 = decimalToBytes(point[0][0], 48)
-  const x_c0 = decimalToBytes(point[0][1], 48)
-  const y_c1 = decimalToBytes(point[1][0], 48)
-  const y_c0 = decimalToBytes(point[1][1], 48)
+  const x_c0 = decimalToBytes(point[0][0], 48)  // real, index [0]
+  const x_c1 = decimalToBytes(point[0][1], 48)  // imaginary, index [1]
+  const y_c0 = decimalToBytes(point[1][0], 48)
+  const y_c1 = decimalToBytes(point[1][1], 48)
   const out = new Uint8Array(192)
-  // Soroban Fp2 = c0 (48 bytes) || c1 (48 bytes)
-  out.set(x_c0, 0)
-  out.set(x_c1, 48)
-  out.set(y_c0, 96)
-  out.set(y_c1, 144)
+  out.set(x_c1, 0)    // imaginary (index [1]) FIRST — blst/Soroban
+  out.set(x_c0, 48)   // real (index [0]) SECOND
+  out.set(y_c1, 96)
+  out.set(y_c0, 144)
   return out
 }
 
@@ -115,8 +116,11 @@ function makeProofScVal(
 }
 
 function makePubSignalsScVal(signals: string[]): xdr.ScVal {
+  // Fr in soroban-sdk wraps U256, so TryFromVal expects ScvU256 not ScvBytes.
+  // Sending ScvBytes here causes Vec<Fr>::get() to call unwrap_optimized() on
+  // a ConversionError, which panics → WasmVm InvalidAction / UnreachableCodeReached.
   const entries = signals.map((s) =>
-    xdr.ScVal.scvBytes(Buffer.from(frToBytes(s)))
+    nativeToScVal(BigInt(s), { type: "u256" })
   )
   return xdr.ScVal.scvVec(entries)
 }
@@ -141,17 +145,24 @@ export async function submitZkProof(
   proof: SnarkjsProof,
   publicSignals: string[]
 ): Promise<number> {
+  console.group("🌟 [ZE] submitZkProof")
+  console.log("contract:", CONTRACTS.ZK_VERIFIER)
+  console.log("wallet:", walletAddress)
+
   if (!CONTRACTS.ZK_VERIFIER) {
+    console.error("❌ ZK_VERIFIER not configured")
+    console.groupEnd()
     throw new Error("ZK_VERIFIER contract ID not configured")
   }
 
   const aBytes = g1ToBytes(proof.pi_a)
   const bBytes = g2ToBytes(proof.pi_b)
   const cBytes = g1ToBytes(proof.pi_c)
+  console.log("proof bytes — pi_a:", aBytes.length, "pi_b:", bBytes.length, "pi_c:", cBytes.length)
 
   const contract = new Contract(CONTRACTS.ZK_VERIFIER)
 
-  // Build the transaction
+  console.log("⏳ fetching account sequence…")
   const sourceAccount = await RPC_SERVER.getAccount(walletAddress)
   const tx = new TransactionBuilder(sourceAccount, {
     fee: BASE_FEE,
@@ -168,45 +179,60 @@ export async function submitZkProof(
     .setTimeout(180)
     .build()
 
-  // Simulate to get resource fees
+  console.log("⏳ simulating transaction…")
   const simResult = await RPC_SERVER.simulateTransaction(tx)
   if (rpc.Api.isSimulationError(simResult)) {
+    console.error("❌ simulation error:", simResult.error)
+    console.groupEnd()
     throw new Error(`Simulation failed: ${simResult.error}`)
   }
+  console.log("✅ simulation OK — assembling…")
   const preparedTx = rpc.assembleTransaction(tx, simResult).build()
 
-  // Sign with Freighter
+  console.log("⏳ requesting Freighter signature…")
   const txXdr = preparedTx.toXDR()
   const signResult = await freighter.signTransaction(txXdr, {
     networkPassphrase: NETWORK_PASSPHRASE,
   })
-  // signResult is a string (signed XDR)
   const signedXdr = typeof signResult === "string" ? signResult : (signResult as { signedTxXdr: string }).signedTxXdr
+  console.log("✅ signed")
 
-  // Submit and poll
+  console.log("⏳ submitting to Soroban RPC…")
   const submitResult = await RPC_SERVER.sendTransaction(
     TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE) as any
   )
   if (submitResult.status === "ERROR") {
+    console.error("❌ submission error:", submitResult.errorResult?.toXDR("base64"))
+    console.groupEnd()
     throw new Error(`Submission failed: ${submitResult.errorResult?.toXDR("base64")}`)
   }
 
-  // Poll for confirmation
   const hash = submitResult.hash
+  console.log("tx hash:", hash)
+  console.log("⏳ polling for confirmation…")
+
   let attempts = 0
   while (attempts < 30) {
     await new Promise((r) => setTimeout(r, 2000))
     const txResult = await RPC_SERVER.getTransaction(hash)
+    console.log(`  poll ${attempts + 1}/30 — status: ${txResult.status}`)
     if (txResult.status === rpc.Api.GetTransactionStatus.SUCCESS) {
       const returnVal = txResult.returnValue
       if (!returnVal) throw new Error("No return value from contract")
-      return Number(scValToNative(returnVal))
+      const tier = Number(scValToNative(returnVal))
+      console.log("✅ verified! tier:", tier)
+      console.groupEnd()
+      return tier
     }
     if (txResult.status === rpc.Api.GetTransactionStatus.FAILED) {
+      console.error("❌ transaction failed on-chain")
+      console.groupEnd()
       throw new Error("Transaction failed on-chain")
     }
     attempts++
   }
+  console.error("❌ timed out after 30 polls")
+  console.groupEnd()
   throw new Error("Transaction timed out waiting for confirmation")
 }
 
@@ -214,7 +240,11 @@ export async function submitZkProof(
  * Read the current tier for a wallet from the TierManager contract (free, no auth).
  */
 export async function readTier(walletAddress: string): Promise<number> {
-  if (!CONTRACTS.TIER_MANAGER) return 0
+  console.log("🌟 [ZE] readTier — wallet:", walletAddress, "contract:", CONTRACTS.TIER_MANAGER)
+  if (!CONTRACTS.TIER_MANAGER) {
+    console.warn("[ZE] readTier: TIER_MANAGER not configured, returning 0")
+    return 0
+  }
   try {
     const contract = new Contract(CONTRACTS.TIER_MANAGER)
     const account = new Account(walletAddress, "0")
@@ -232,10 +262,19 @@ export async function readTier(walletAddress: string): Promise<number> {
       .build()
 
     const sim = await RPC_SERVER.simulateTransaction(tx)
-    if (rpc.Api.isSimulationError(sim)) return 0
-    if (!("result" in sim) || !sim.result?.retval) return 0
-    return Number(scValToNative(sim.result.retval))
-  } catch {
+    if (rpc.Api.isSimulationError(sim)) {
+      console.warn("[ZE] readTier sim error:", sim.error)
+      return 0
+    }
+    if (!("result" in sim) || !sim.result?.retval) {
+      console.warn("[ZE] readTier: no retval from sim")
+      return 0
+    }
+    const tier = Number(scValToNative(sim.result.retval))
+    console.log("✅ [ZE] readTier result:", tier)
+    return tier
+  } catch (e) {
+    console.warn("[ZE] readTier threw:", e)
     return 0
   }
 }
@@ -260,6 +299,7 @@ async function simulateReadOnly(
   args: xdr.ScVal[],
   sourceAddress: string
 ): Promise<xdr.ScVal | null> {
+  console.log(`🌟 [ZE] simulateReadOnly — ${method} (${contractId.slice(0, 8)}…)`)
   const contract = new Contract(contractId)
   const account = new Account(sourceAddress, "0")
   const tx = new TransactionBuilder(account, {
@@ -271,8 +311,15 @@ async function simulateReadOnly(
     .build()
 
   const sim = await RPC_SERVER.simulateTransaction(tx)
-  if (rpc.Api.isSimulationError(sim)) return null
-  if (!("result" in sim) || !sim.result?.retval) return null
+  if (rpc.Api.isSimulationError(sim)) {
+    console.warn(`[ZE] simulateReadOnly ${method} error:`, sim.error)
+    return null
+  }
+  if (!("result" in sim) || !sim.result?.retval) {
+    console.warn(`[ZE] simulateReadOnly ${method}: no retval`)
+    return null
+  }
+  console.log(`✅ [ZE] simulateReadOnly ${method} OK`)
   return sim.result.retval
 }
 
@@ -285,10 +332,20 @@ async function submitVaultCall(
   method: string,
   args: xdr.ScVal[]
 ): Promise<xdr.ScVal> {
-  if (!CONTRACTS.SYNTH_VAULT) throw new Error("SYNTH_VAULT contract ID not configured")
+  console.group(`🌟 [ZE] submitVaultCall — ${method}`)
+  console.log("wallet:", walletAddress, "contract:", CONTRACTS.SYNTH_VAULT)
+
+  if (!CONTRACTS.SYNTH_VAULT) {
+    console.error("❌ SYNTH_VAULT not configured")
+    console.groupEnd()
+    throw new Error("SYNTH_VAULT contract ID not configured")
+  }
 
   const contract = new Contract(CONTRACTS.SYNTH_VAULT)
+  console.log("⏳ fetching account sequence…")
   const sourceAccount = await RPC_SERVER.getAccount(walletAddress)
+  console.log("sequence:", sourceAccount.sequenceNumber())
+
   const tx = new TransactionBuilder(sourceAccount, {
     fee: BASE_FEE,
     networkPassphrase: NETWORK_PASSPHRASE,
@@ -297,12 +354,17 @@ async function submitVaultCall(
     .setTimeout(180)
     .build()
 
+  console.log("⏳ simulating…")
   const simResult = await RPC_SERVER.simulateTransaction(tx)
   if (rpc.Api.isSimulationError(simResult)) {
+    console.error("❌ simulation error:", simResult.error)
+    console.groupEnd()
     throw new Error(`Simulation failed: ${simResult.error}`)
   }
+  console.log("✅ simulation OK — assembling…")
   const preparedTx = rpc.assembleTransaction(tx, simResult).build()
 
+  console.log("⏳ requesting Freighter signature…")
   const txXdr = preparedTx.toXDR()
   const { signTransaction } = await import("@stellar/freighter-api")
   const signResult = await signTransaction(txXdr, { networkPassphrase: NETWORK_PASSPHRASE })
@@ -310,28 +372,42 @@ async function submitVaultCall(
     typeof signResult === "string"
       ? signResult
       : (signResult as { signedTxXdr: string }).signedTxXdr
+  console.log("✅ signed")
 
+  console.log("⏳ submitting…")
   const submitResult = await RPC_SERVER.sendTransaction(
     TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE) as Parameters<typeof RPC_SERVER.sendTransaction>[0]
   )
   if (submitResult.status === "ERROR") {
+    console.error("❌ submission error:", submitResult.errorResult?.toXDR("base64"))
+    console.groupEnd()
     throw new Error(`Submission failed: ${submitResult.errorResult?.toXDR("base64")}`)
   }
 
   const hash = submitResult.hash
+  console.log("tx hash:", hash)
+  console.log("⏳ polling…")
+
   let attempts = 0
   while (attempts < 30) {
     await new Promise((r) => setTimeout(r, 2000))
     const txResult = await RPC_SERVER.getTransaction(hash)
+    console.log(`  poll ${attempts + 1}/30 — ${txResult.status}`)
     if (txResult.status === rpc.Api.GetTransactionStatus.SUCCESS) {
       if (!txResult.returnValue) throw new Error("No return value")
+      console.log("✅ confirmed")
+      console.groupEnd()
       return txResult.returnValue
     }
     if (txResult.status === rpc.Api.GetTransactionStatus.FAILED) {
+      console.error("❌ failed on-chain")
+      console.groupEnd()
       throw new Error("Transaction failed on-chain")
     }
     attempts++
   }
+  console.error("❌ timed out")
+  console.groupEnd()
   throw new Error("Transaction timed out")
 }
 
@@ -349,6 +425,12 @@ export async function openVaultPosition(
   collateralUSDC: number
 ): Promise<string> {
   const collateralMicro = BigInt(Math.round(collateralUSDC * MICRO))
+  console.log("📊 [ZE] openVaultPosition", {
+    asset: ASSET_SYMBOL[assetId],
+    direction: DIR_SYMBOL[directionId],
+    leverage: `${leverage}x`,
+    collateral: `$${collateralUSDC} USDC (${collateralMicro} micro)`,
+  })
   const retval = await submitVaultCall(walletAddress, "open_position", [
     nativeToScVal(walletAddress, { type: "address" }),
     nativeToScVal(assetId, { type: "u32" }),
@@ -356,7 +438,9 @@ export async function openVaultPosition(
     nativeToScVal(leverage, { type: "u32" }),
     nativeToScVal(collateralMicro, { type: "i128" }),
   ])
-  return String(scValToNative(retval))
+  const positionId = String(scValToNative(retval))
+  console.log("✅ [ZE] openVaultPosition — positionId:", positionId)
+  return positionId
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -368,12 +452,15 @@ export async function closeVaultPosition(
   walletAddress: string,
   positionId: string
 ): Promise<number> {
+  console.log("📊 [ZE] closeVaultPosition — id:", positionId)
   const retval = await submitVaultCall(walletAddress, "close_position", [
     nativeToScVal(walletAddress, { type: "address" }),
     nativeToScVal(BigInt(positionId), { type: "u64" }),
   ])
   const pnlMicro = BigInt(String(scValToNative(retval)))
-  return Number(pnlMicro) / MICRO
+  const pnl = Number(pnlMicro) / MICRO
+  console.log(`✅ [ZE] closeVaultPosition — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} USDC`)
+  return pnl
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -406,7 +493,11 @@ export async function getVaultPrice(assetId: number, sourceAddress: string): Pro
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function getWalletPositionIds(walletAddress: string): Promise<string[]> {
-  if (!CONTRACTS.SYNTH_VAULT) return []
+  console.log("📊 [ZE] getWalletPositionIds — wallet:", walletAddress)
+  if (!CONTRACTS.SYNTH_VAULT) {
+    console.warn("[ZE] getWalletPositionIds: SYNTH_VAULT not configured")
+    return []
+  }
   try {
     const retval = await simulateReadOnly(
       CONTRACTS.SYNTH_VAULT,
@@ -416,8 +507,11 @@ export async function getWalletPositionIds(walletAddress: string): Promise<strin
     )
     if (!retval) return []
     const ids = scValToNative(retval) as bigint[]
-    return ids.map(String)
-  } catch {
+    const result = ids.map(String)
+    console.log("✅ [ZE] getWalletPositionIds:", result)
+    return result
+  } catch (e) {
+    console.warn("[ZE] getWalletPositionIds threw:", e)
     return []
   }
 }
@@ -441,6 +535,7 @@ export async function getVaultPosition(
   positionId: string,
   sourceAddress: string
 ): Promise<VaultPosition | null> {
+  console.log("📊 [ZE] getVaultPosition — id:", positionId)
   if (!CONTRACTS.SYNTH_VAULT) return null
   try {
     const retval = await simulateReadOnly(
@@ -452,7 +547,7 @@ export async function getVaultPosition(
     if (!retval) return null
     const raw = scValToNative(retval) as Record<string, unknown> | null
     if (!raw) return null
-    return {
+    const position: VaultPosition = {
       id: String(raw.id),
       asset: ASSET_SYMBOL[Number(raw.asset)] ?? "sAAPL",
       direction: DIR_SYMBOL[Number(raw.direction)] ?? "LONG",
@@ -461,7 +556,10 @@ export async function getVaultPosition(
       collateralUSDC: Number(BigInt(String(raw.collateral))) / MICRO,
       openedAt: new Date(Number(raw.opened_at) * 1000),
     }
-  } catch {
+    console.log("✅ [ZE] getVaultPosition:", position)
+    return position
+  } catch (e) {
+    console.warn("[ZE] getVaultPosition threw:", e)
     return null
   }
 }

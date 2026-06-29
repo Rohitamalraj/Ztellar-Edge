@@ -18,11 +18,13 @@ export function useFreighter(): FreighterState {
   const [isConnecting, setIsConnecting] = useState(false)
 
   useEffect(() => {
-    const check = async () => {
+    // Delay lets the Freighter extension background script finish initializing
+    // before we call its APIs — avoids the internal isDefaultWallet crash on load.
+    const timer = setTimeout(async () => {
       try {
         const freighter = await import("@stellar/freighter-api")
         const installed = await freighter.isConnected()
-        setIsInstalled(installed.isConnected)
+        setIsInstalled(!!installed.isConnected)
 
         if (installed.isConnected) {
           const allowed = await freighter.isAllowed()
@@ -37,8 +39,8 @@ export function useFreighter(): FreighterState {
       } catch {
         setIsInstalled(false)
       }
-    }
-    check()
+    }, 300)
+    return () => clearTimeout(timer)
   }, [])
 
   const connect = useCallback(async () => {

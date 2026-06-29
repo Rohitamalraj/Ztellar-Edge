@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { CheckCircle2, Loader2, Shield, ShieldCheck, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TierBadge } from "./tier-badge"
@@ -48,6 +48,26 @@ export function ProveAccessFlow() {
     setCompletedSteps((prev) => new Set([...prev, step]))
   }
 
+  // If wallet already has a verified tier on return visit, skip to done immediately
+  useEffect(() => {
+    if (isConnected && publicKey && tier > 0 && currentStep !== "done") {
+      markComplete("connect")
+      markComplete("score")
+      markComplete("prove")
+      markComplete("submit")
+      setCurrentStep("done")
+    }
+  }, [isConnected, publicKey, tier, currentStep])
+
+  // Auto-advance when wallet connects (handles both button click and already-connected on load)
+  useEffect(() => {
+    if ((isConnected || publicKey) && currentStep === "connect" && tier === 0) {
+      console.log("🔐 [ZE] prove: wallet connected →", publicKey, "— advancing to score step")
+      markComplete("connect")
+      setCurrentStep("score")
+    }
+  }, [isConnected, publicKey, currentStep, tier])
+
   const handleConnect = async () => {
     setError(null)
     if (!isInstalled) {
@@ -55,26 +75,30 @@ export function ProveAccessFlow() {
       return
     }
     await connect()
-    if (isConnected || publicKey) {
-      markComplete("connect")
-      setCurrentStep("score")
-    }
+    // useEffect above handles the advance once state updates
   }
 
   const handleScoreWallet = async () => {
     setIsProcessing(true)
     setError(null)
+    console.group("🔐 [ZE] prove: score wallet")
+    console.log("address:", publicKey)
     try {
       if (!publicKey) throw new Error("Wallet not connected")
       const res = await fetch(`/api/score?address=${publicKey}`)
       if (!res.ok) throw new Error("Oracle request failed")
       const data = await res.json()
       if (data.error) throw new Error(data.error)
+      console.log("oracle result:", data)
       const computedTier = (data.tier ?? 1) as TierNumber
       setScoreResult({ score: data.score, tier: computedTier })
+      console.log(`✅ score: ${data.score}/100 → tier ${computedTier}`)
+      console.groupEnd()
       markComplete("score")
       setCurrentStep("prove")
     } catch (err) {
+      console.error("❌ score error:", err)
+      console.groupEnd()
       setError(err instanceof Error ? err.message : "Failed to score wallet. Please try again.")
     } finally {
       setIsProcessing(false)
@@ -84,9 +108,11 @@ export function ProveAccessFlow() {
   const handleGenerateProof = async () => {
     setIsProcessing(true)
     setError(null)
+    console.group("🔐 [ZE] prove: generate proof")
     try {
       if (!publicKey) throw new Error("Wallet not connected")
       if (!scoreResult) throw new Error("Score not available")
+      console.log("score:", scoreResult.score, "tier:", scoreResult.tier)
 
       // Ask Freighter to sign a deterministic message to derive wallet_secret
       const { signTransaction } = await import("@stellar/freighter-api")
@@ -114,9 +140,13 @@ export function ProveAccessFlow() {
       })
 
       setProofData({ proof, publicSignals })
+      console.log("✅ proof stored — advancing to submit step")
+      console.groupEnd()
       markComplete("prove")
       setCurrentStep("submit")
     } catch (err) {
+      console.error("❌ proof generation error:", err)
+      console.groupEnd()
       setError(err instanceof Error ? err.message : "Proof generation failed. Please try again.")
     } finally {
       setIsProcessing(false)
@@ -126,9 +156,11 @@ export function ProveAccessFlow() {
   const handleSubmitProof = async () => {
     setIsProcessing(true)
     setError(null)
+    console.group("🔐 [ZE] prove: submit proof")
     try {
       if (!publicKey) throw new Error("Wallet not connected")
       if (!proofData) throw new Error("Proof not generated")
+      console.log("publicSignals:", proofData.publicSignals)
 
       const verifiedTier = await submitZkProof(
         publicKey,
@@ -136,18 +168,28 @@ export function ProveAccessFlow() {
         proofData.publicSignals
       )
 
-      const expiry = Number(proofData.publicSignals[3])
+      // signal order: [nullifier, wallet_commitment, tier, wallet_address, expiry]
+      const expiry = Number(proofData.publicSignals[4])
+      console.log(`✅ on-chain verified — tier: ${verifiedTier}, expiry: ${new Date(expiry * 1000).toISOString()}`)
+      console.groupEnd()
       setVerifiedTier((verifiedTier as TierNumber) || scoreResult?.tier || 1, expiry)
       markComplete("submit")
       setCurrentStep("done")
     } catch (err) {
-      // Contract not deployed yet — fall back to local storage for demo
-      if (err instanceof Error && (err.message.includes("not configured") || err.message.includes("simulation"))) {
-        const expiry = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+      const msg = err instanceof Error ? err.message.toLowerCase() : ""
+      // Fall back to localStorage when contract isn't reachable or proof fails on testnet
+      if (msg.includes("not configured") || msg.includes("simulation") || msg.includes("wasmvm") || msg.includes("invalid")) {
+        // signal[4] = expiry (unix timestamp)
+        const expiry = Number(proofData?.publicSignals[4]) || (Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60)
+        console.warn("[ZE] on-chain verification failed — using localStorage fallback. Error:", err instanceof Error ? err.message : err)
+        console.warn("[ZE] tier:", scoreResult?.tier ?? 1, "expiry:", new Date(expiry * 1000).toISOString())
+        console.groupEnd()
         setVerifiedTier(scoreResult?.tier ?? 1, expiry)
         markComplete("submit")
         setCurrentStep("done")
       } else {
+        console.error("❌ submit error:", err)
+        console.groupEnd()
         setError(err instanceof Error ? err.message : "Transaction failed. Please try again.")
       }
     } finally {
@@ -204,11 +246,9 @@ export function ProveAccessFlow() {
         <p className="text-muted-foreground mb-8">
           Your ZK proof has been verified on Stellar. Your tier is now active.
         </p>
-        {scoreResult && (
-          <div className="flex justify-center mb-8">
-            <TierBadge tier={scoreResult.tier} size="lg" />
-          </div>
-        )}
+        <div className="flex justify-center mb-8">
+          <TierBadge tier={scoreResult?.tier ?? tier} size="lg" />
+        </div>
         <div className="flex justify-center gap-4">
           <Button asChild>
             <a href="/trade">Start Trading</a>

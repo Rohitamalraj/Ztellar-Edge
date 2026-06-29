@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { DashboardNav } from "@/components/dashboard/dashboard-nav"
 import { TradingLayout } from "@/components/dashboard/trading-layout"
 import { MarketsPanel } from "@/components/dashboard/markets-panel"
-import { PriceChart } from "@/components/dashboard/price-chart"
+import { CandlestickChart } from "@/components/dashboard/candlestick-chart"
 import { TradeForm } from "@/components/dashboard/trade-form"
 import { PositionsPanel } from "@/components/dashboard/positions-panel"
 import { StatsBar } from "@/components/dashboard/stats-bar"
@@ -28,8 +28,7 @@ export default function TradePage() {
       await openPosition(selectedAsset, direction, leverage, collateral, currentPrice)
       toast.success(`${direction} ${selectedAsset} ${leverage}x opened`)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to open position"
-      toast.error(msg)
+      toast.error(err instanceof Error ? err.message : "Failed to open position")
     }
   }
 
@@ -39,8 +38,7 @@ export default function TradePage() {
       const sign = pnl >= 0 ? "+" : ""
       toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to close position"
-      toast.error(msg)
+      toast.error(err instanceof Error ? err.message : "Failed to close position")
     }
   }
 
@@ -48,7 +46,7 @@ export default function TradePage() {
     <>
       <DashboardNav tier={tier} isVerified={isVerified} />
       <div className="pt-[72px]">
-        <StatsBar positions={positions} prices={prices} />
+        <StatsBar positions={positions} prices={prices} selectedAsset={selectedAsset} />
         <TradingLayout
           leftPanel={
             <MarketsPanel
@@ -58,10 +56,9 @@ export default function TradePage() {
             />
           }
           centerPanel={
-            <PriceChart
+            <CandlestickChart
               asset={selectedAsset}
-              price={prices[selectedAsset].price}
-              change24h={prices[selectedAsset].change24h}
+              priceData={prices[selectedAsset]}
             />
           }
           rightPanel={

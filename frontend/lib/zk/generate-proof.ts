@@ -24,7 +24,9 @@ export interface ZkProofResult {
     protocol: string
     curve: string
   }
-  publicSignals: string[] // [nullifier, wallet_commitment, tier, expiry]
+  // Circuit outputs then public inputs:
+  // [0] nullifier, [1] wallet_commitment, [2] tier, [3] wallet_address, [4] expiry
+  publicSignals: string[]
 }
 
 export interface ZkInputs {
@@ -98,7 +100,18 @@ function hexToBytes(hex: string): Uint8Array {
  * Throws if WASM/zkey files are not served at /zk/.
  */
 export async function generateTierProof(inputs: ZkInputs): Promise<ZkProofResult> {
+  console.group("🔐 [ZE] generateTierProof")
+  console.log("WASM:", WASM_URL)
+  console.log("zkey:", ZKEY_URL)
+  console.log("inputs:", {
+    score: inputs.score,
+    expiry: new Date(inputs.expiry * 1000).toISOString(),
+    walletAddressField: inputs.walletAddressField.toString().slice(0, 12) + "…",
+    walletSecret: "<redacted>",
+  })
+
   const groth16 = await getSnarkjs()
+  console.log("snarkjs loaded — starting fullProve…")
 
   const circuitInputs = {
     wallet_secret: inputs.walletSecret.toString(),
@@ -107,18 +120,31 @@ export async function generateTierProof(inputs: ZkInputs): Promise<ZkProofResult
     expiry: inputs.expiry.toString(),
   }
 
+  const t0 = performance.now()
   const { proof, publicSignals } = await groth16.fullProve(
     circuitInputs,
     WASM_URL,
     ZKEY_URL
   )
+  const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+
+  console.log(`✅ proof generated in ${elapsed}s`)
+  console.log("publicSignals:", {
+    nullifier: publicSignals[0]?.slice(0, 10) + "…",
+    wallet_commitment: publicSignals[1]?.slice(0, 10) + "…",
+    tier: publicSignals[2],
+    wallet_address: publicSignals[3]?.slice(0, 10) + "…",
+    expiry: publicSignals[4],
+  })
+  console.log("pi_a[0]:", proof.pi_a[0].slice(0, 16) + "…")
+  console.groupEnd()
 
   return { proof: proof as ZkProofResult["proof"], publicSignals }
 }
 
 /**
  * Parse the tier from the public signals array output by the circuit.
- * Public signal order: [nullifier, wallet_commitment, tier, expiry]
+ * Signal order: [nullifier, wallet_commitment, tier, wallet_address, expiry]
  */
 export function parseTierFromSignals(publicSignals: string[]): number {
   return Number(publicSignals[2])
