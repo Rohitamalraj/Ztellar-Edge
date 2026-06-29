@@ -13,6 +13,7 @@ import { useFreighter } from "@/hooks/use-freighter"
 import { useTier } from "@/hooks/use-tier"
 import { usePositions, type AssetSymbol, type Direction } from "@/hooks/use-positions"
 import { usePrices } from "@/hooks/use-prices"
+import { ASSET_ID } from "@/lib/stellar"
 
 export default function TradePage() {
   const { isConnected, publicKey } = useFreighter()
@@ -20,8 +21,18 @@ export default function TradePage() {
   const { positions, isOpening, openPosition, closePosition } = usePositions(publicKey)
   const prices = usePrices(publicKey)
   const [selectedAsset, setSelectedAsset] = useState<AssetSymbol>("sAAPL")
+  const [favorites, setFavorites] = useState<Set<AssetSymbol>>(new Set())
 
   const currentPrice = prices[selectedAsset].price
+  const isAssetTradable = selectedAsset in ASSET_ID
+
+  const handleToggleFavorite = (sym: AssetSymbol) => {
+    setFavorites((prev) => {
+      const next = new Set(prev)
+      if (next.has(sym)) next.delete(sym); else next.add(sym)
+      return next
+    })
+  }
 
   const handleOpenPosition = async (direction: Direction, leverage: number, collateral: number) => {
     try {
@@ -53,6 +64,8 @@ export default function TradePage() {
               selected={selectedAsset}
               onSelect={setSelectedAsset}
               prices={prices}
+              favorites={favorites}
+              onToggleFavorite={handleToggleFavorite}
             />
           }
           centerPanel={
@@ -68,6 +81,7 @@ export default function TradePage() {
               tier={tier}
               isConnected={isConnected}
               isVerified={isVerified}
+              isTradable={isAssetTradable}
               onSubmit={handleOpenPosition}
               isSubmitting={isOpening}
             />

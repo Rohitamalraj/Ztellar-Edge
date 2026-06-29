@@ -11,7 +11,11 @@ import {
   type VaultPosition,
 } from "@/lib/stellar"
 
-export type AssetSymbol = "sAAPL" | "sTSLA" | "sNVDA"
+export type AssetSymbol =
+  | "sAAPL" | "sTSLA" | "sNVDA"
+  | "sMSFT" | "sAMZN" | "sGOOG"
+  | "sMETA" | "sNFLX" | "sAMD"
+  | "sJPM"  | "sSPY"  | "sPFE"
 export type Direction = "LONG" | "SHORT"
 
 export interface Position extends VaultPosition {

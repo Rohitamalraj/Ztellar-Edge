@@ -17,11 +17,12 @@ interface TradeFormProps {
   tier: TierNumber
   isConnected: boolean
   isVerified: boolean
+  isTradable?: boolean
   onSubmit: (direction: Direction, leverage: number, collateral: number) => Promise<void>
   isSubmitting: boolean
 }
 
-export function TradeForm({ asset, price, tier, isConnected, isVerified, onSubmit, isSubmitting }: TradeFormProps) {
+export function TradeForm({ asset, price, tier, isConnected, isVerified, isTradable = true, onSubmit, isSubmitting }: TradeFormProps) {
   const [direction, setDirection] = useState<Direction>("LONG")
   const [leverage, setLeverage] = useState(1)
   const [collateral, setCollateral] = useState("")
@@ -139,7 +140,11 @@ export function TradeForm({ asset, price, tier, isConnected, isVerified, onSubmi
 
       {/* Action button */}
       <div className="p-4 border-t border-foreground/10">
-        {!isConnected ? (
+        {!isTradable ? (
+          <Button className="w-full font-mono text-xs" disabled variant="outline">
+            Coming Soon — Not Yet On-Chain
+          </Button>
+        ) : !isConnected ? (
           <Button className="w-full" disabled>Connect Wallet</Button>
         ) : !isVerified ? (
           <Button className="w-full" variant="outline" asChild>
