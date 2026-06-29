@@ -15,18 +15,18 @@ export interface AssetMeta {
 }
 
 export const ASSET_META: AssetMeta[] = [
-  { symbol: "sAAPL", name: "Apple Inc.",               category: "Technology", tradable: true  },
-  { symbol: "sTSLA", name: "Tesla Inc.",               category: "Technology", tradable: true  },
-  { symbol: "sNVDA", name: "NVIDIA Corp.",             category: "Technology", tradable: true  },
-  { symbol: "sMSFT", name: "Microsoft Corp.",          category: "Technology", tradable: false },
-  { symbol: "sAMZN", name: "Amazon.com Inc.",          category: "Consumer",   tradable: false },
-  { symbol: "sGOOG", name: "Alphabet Inc.",            category: "Technology", tradable: false },
-  { symbol: "sMETA", name: "Meta Platforms",           category: "Technology", tradable: false },
-  { symbol: "sNFLX", name: "Netflix Inc.",             category: "Consumer",   tradable: false },
-  { symbol: "sAMD",  name: "Advanced Micro Devices",  category: "Technology", tradable: false },
-  { symbol: "sJPM",  name: "JPMorgan Chase & Co.",    category: "Financials", tradable: false },
-  { symbol: "sSPY",  name: "S&P 500 ETF",             category: "ETF",        tradable: false },
-  { symbol: "sPFE",  name: "Pfizer Inc.",              category: "Healthcare", tradable: false },
+  { symbol: "sAAPL", name: "Apple Inc.",              category: "Technology", tradable: true },
+  { symbol: "sTSLA", name: "Tesla Inc.",              category: "Technology", tradable: true },
+  { symbol: "sNVDA", name: "NVIDIA Corp.",            category: "Technology", tradable: true },
+  { symbol: "sMSFT", name: "Microsoft Corp.",         category: "Technology", tradable: true },
+  { symbol: "sAMZN", name: "Amazon.com Inc.",         category: "Consumer",   tradable: true },
+  { symbol: "sGOOG", name: "Alphabet Inc.",           category: "Technology", tradable: true },
+  { symbol: "sMETA", name: "Meta Platforms",          category: "Technology", tradable: true },
+  { symbol: "sNFLX", name: "Netflix Inc.",            category: "Consumer",   tradable: true },
+  { symbol: "sAMD",  name: "Advanced Micro Devices", category: "Technology", tradable: true },
+  { symbol: "sJPM",  name: "JPMorgan Chase & Co.",   category: "Financials", tradable: true },
+  { symbol: "sSPY",  name: "S&P 500 ETF",            category: "ETF",        tradable: true },
+  { symbol: "sPFE",  name: "Pfizer Inc.",             category: "Healthcare", tradable: true },
 ]
 
 interface MarketsPanelProps {
@@ -151,12 +151,7 @@ export function MarketsPanel({ selected, onSelect, prices, favorites, onToggleFa
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-xs font-medium">{symbol}</span>
                       {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-foreground shrink-0" />}
-                      {!tradable && (
-                        <span className="font-mono text-[9px] text-muted-foreground/60 border border-foreground/10 px-1">
-                          soon
-                        </span>
-                      )}
-                    </div>
+                      </div>
                     <div className="font-mono text-[10px] text-muted-foreground truncate">{name}</div>
                   </div>
                 </div>

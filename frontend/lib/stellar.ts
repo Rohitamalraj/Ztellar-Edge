@@ -283,8 +283,18 @@ export async function readTier(walletAddress: string): Promise<number> {
 // Asset / direction constants (must match synth_vault contract)
 // ──────────────────────────────────────────────────────────────────────────────
 
-export const ASSET_ID: Record<string, number> = { sAAPL: 0, sTSLA: 1, sNVDA: 2 }
-export const ASSET_SYMBOL: Record<number, string> = { 0: "sAAPL", 1: "sTSLA", 2: "sNVDA" }
+export const ASSET_ID: Record<string, number> = {
+  sAAPL: 0, sTSLA: 1, sNVDA: 2,
+  sMSFT: 3, sAMZN: 4, sGOOG: 5,
+  sMETA: 6, sNFLX: 7, sAMD:  8,
+  sJPM:  9, sSPY: 10, sPFE: 11,
+}
+export const ASSET_SYMBOL: Record<number, string> = {
+  0: "sAAPL", 1: "sTSLA", 2: "sNVDA",
+  3: "sMSFT", 4: "sAMZN", 5: "sGOOG",
+  6: "sMETA", 7: "sNFLX", 8: "sAMD",
+  9: "sJPM", 10: "sSPY", 11: "sPFE",
+}
 export const DIR_ID: Record<string, number> = { LONG: 0, SHORT: 1 }
 export const DIR_SYMBOL: Record<number, string> = { 0: "LONG", 1: "SHORT" }
 const MICRO = 1_000_000 // 6-decimal fixed point used by vault

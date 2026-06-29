@@ -140,11 +140,7 @@ export function TradeForm({ asset, price, tier, isConnected, isVerified, isTrada
 
       {/* Action button */}
       <div className="p-4 border-t border-foreground/10">
-        {!isTradable ? (
-          <Button className="w-full font-mono text-xs" disabled variant="outline">
-            Coming Soon — Not Yet On-Chain
-          </Button>
-        ) : !isConnected ? (
+        {!isConnected ? (
           <Button className="w-full" disabled>Connect Wallet</Button>
         ) : !isVerified ? (
           <Button className="w-full" variant="outline" asChild>

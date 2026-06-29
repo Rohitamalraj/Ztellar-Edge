@@ -6,12 +6,21 @@ use soroban_sdk::{
 };
 
 // ──────────────────────────────────────────────
-// Supported synthetic assets
+// Supported synthetic assets  (asset id = index)
 // ──────────────────────────────────────────────
-// sAAPL = 0, sTSLA = 1, sNVDA = 2
 pub const ASSET_AAPL: u32 = 0;
 pub const ASSET_TSLA: u32 = 1;
 pub const ASSET_NVDA: u32 = 2;
+pub const ASSET_MSFT: u32 = 3;
+pub const ASSET_AMZN: u32 = 4;
+pub const ASSET_GOOG: u32 = 5;
+pub const ASSET_META: u32 = 6;
+pub const ASSET_NFLX: u32 = 7;
+pub const ASSET_AMD:  u32 = 8;
+pub const ASSET_JPM:  u32 = 9;
+pub const ASSET_SPY:  u32 = 10;
+pub const ASSET_PFE:  u32 = 11;
+pub const ASSET_COUNT: u32 = 12;
 
 // ──────────────────────────────────────────────
 // Direction: Long = 0, Short = 1
@@ -24,12 +33,11 @@ pub const DIR_SHORT: u32 = 1;
 // ──────────────────────────────────────────────
 #[contracttype]
 enum DataKey {
-    Position(u64),                 // position_id → Position
-    WalletPositions(Address),      // wallet → Vec<u64> (position IDs)
+    Position(u64),
+    WalletPositions(Address),
     NextId,
     Admin,
     TierManager,
-    // Price feeds keyed by asset id (set by admin/oracle for demo)
     Price(u32),
 }
 
@@ -41,12 +49,12 @@ enum DataKey {
 pub struct Position {
     pub id: u64,
     pub wallet: Address,
-    pub asset: u32,         // ASSET_AAPL / ASSET_TSLA / ASSET_NVDA
-    pub direction: u32,     // DIR_LONG / DIR_SHORT
-    pub leverage: u32,      // e.g. 2 (= 2x)
-    pub entry_price: i128,  // price in micro-USDC (6 decimals)
-    pub collateral: i128,   // micro-USDC
-    pub opened_at: u64,     // ledger timestamp
+    pub asset: u32,
+    pub direction: u32,
+    pub leverage: u32,
+    pub entry_price: i128,  // micro-USD (6 decimals)
+    pub collateral: i128,   // micro-USD (6 decimals)
+    pub opened_at: u64,
 }
 
 // ──────────────────────────────────────────────
@@ -56,16 +64,16 @@ pub struct Position {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum VaultError {
-    AlreadyInitialized = 1,
-    NotInitialized = 2,
-    Unauthorized = 3,
-    WalletNotVerified = 4,
+    AlreadyInitialized   = 1,
+    NotInitialized       = 2,
+    Unauthorized         = 3,
+    WalletNotVerified    = 4,
     LeverageExceedsTierCap = 5,
-    InvalidAsset = 6,
-    InvalidLeverage = 7,
-    InvalidCollateral = 8,
-    PositionNotFound = 9,
-    NotPositionOwner = 10,
+    InvalidAsset         = 6,
+    InvalidLeverage      = 7,
+    InvalidCollateral    = 8,
+    PositionNotFound     = 9,
+    NotPositionOwner     = 10,
 }
 
 // ──────────────────────────────────────────────
@@ -76,7 +84,6 @@ pub struct SynthVault;
 
 #[contractimpl]
 impl SynthVault {
-    /// Initialize the vault with the TierManager contract address.
     pub fn init(
         env: Env,
         admin: Address,
@@ -89,15 +96,24 @@ impl SynthVault {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::TierManager, &tier_manager);
         env.storage().instance().set(&DataKey::NextId, &0u64);
-        // Seed mock prices (6 decimals): AAPL=$192.35, TSLA=$248.12, NVDA=$875.44
-        env.storage().instance().set(&DataKey::Price(ASSET_AAPL), &192_350_000i128);
-        env.storage().instance().set(&DataKey::Price(ASSET_TSLA), &248_120_000i128);
-        env.storage().instance().set(&DataKey::Price(ASSET_NVDA), &875_440_000i128);
+
+        // Seed prices in micro-USD (price * 1_000_000)
+        env.storage().instance().set(&DataKey::Price(ASSET_AAPL), &211_450_000i128); // $211.45
+        env.storage().instance().set(&DataKey::Price(ASSET_TSLA), &248_120_000i128); // $248.12
+        env.storage().instance().set(&DataKey::Price(ASSET_NVDA), &135_800_000i128); // $135.80
+        env.storage().instance().set(&DataKey::Price(ASSET_MSFT), &452_860_000i128); // $452.86
+        env.storage().instance().set(&DataKey::Price(ASSET_AMZN), &215_450_000i128); // $215.45
+        env.storage().instance().set(&DataKey::Price(ASSET_GOOG), &185_370_000i128); // $185.37
+        env.storage().instance().set(&DataKey::Price(ASSET_META), &681_420_000i128); // $681.42
+        env.storage().instance().set(&DataKey::Price(ASSET_NFLX), &1_291_500_000i128); // $1291.50
+        env.storage().instance().set(&DataKey::Price(ASSET_AMD),  &172_180_000i128); // $172.18
+        env.storage().instance().set(&DataKey::Price(ASSET_JPM),  &272_900_000i128); // $272.90
+        env.storage().instance().set(&DataKey::Price(ASSET_SPY),  &594_200_000i128); // $594.20
+        env.storage().instance().set(&DataKey::Price(ASSET_PFE),  &25_100_000i128);  // $25.10
         Ok(())
     }
 
-    /// Admin updates an asset price (micro-USDC, 6 decimals).
-    /// In production this would be called by the Reflector oracle adapter.
+    /// Admin or oracle updates an asset price (micro-USD, 6 decimals).
     pub fn set_price(env: Env, asset: u32, price: i128) -> Result<(), VaultError> {
         let admin: Address = env
             .storage()
@@ -105,18 +121,14 @@ impl SynthVault {
             .get(&DataKey::Admin)
             .ok_or(VaultError::NotInitialized)?;
         admin.require_auth();
-        if asset > ASSET_NVDA {
+        if asset >= ASSET_COUNT {
             return Err(VaultError::InvalidAsset);
         }
         env.storage().instance().set(&DataKey::Price(asset), &price);
         Ok(())
     }
 
-    /// Admin can update the TierManager address.
-    pub fn set_tier_manager(
-        env: Env,
-        new_tier_manager: Address,
-    ) -> Result<(), VaultError> {
+    pub fn set_tier_manager(env: Env, new_tier_manager: Address) -> Result<(), VaultError> {
         let admin: Address = env
             .storage()
             .instance()
@@ -127,7 +139,6 @@ impl SynthVault {
         Ok(())
     }
 
-    /// Get the current price for an asset in micro-USDC (6 decimals).
     pub fn get_price(env: Env, asset: u32) -> Result<i128, VaultError> {
         env.storage()
             .instance()
@@ -135,8 +146,6 @@ impl SynthVault {
             .ok_or(VaultError::InvalidAsset)
     }
 
-    /// Open a leveraged synthetic position.
-    /// Requires caller to have a valid ZK-verified tier with sufficient leverage cap.
     pub fn open_position(
         env: Env,
         wallet: Address,
@@ -147,7 +156,7 @@ impl SynthVault {
     ) -> Result<u64, VaultError> {
         wallet.require_auth();
 
-        if asset > ASSET_NVDA {
+        if asset >= ASSET_COUNT {
             return Err(VaultError::InvalidAsset);
         }
         if direction > DIR_SHORT {
@@ -160,7 +169,6 @@ impl SynthVault {
             return Err(VaultError::InvalidCollateral);
         }
 
-        // ── Check tier leverage cap ──────────────────────────────────────
         let tier_manager: Address = env
             .storage()
             .instance()
@@ -175,21 +183,18 @@ impl SynthVault {
             return Err(VaultError::LeverageExceedsTierCap);
         }
 
-        // ── Fetch entry price ────────────────────────────────────────────
         let entry_price: i128 = env
             .storage()
             .instance()
             .get(&DataKey::Price(asset))
             .ok_or(VaultError::InvalidAsset)?;
 
-        // ── Create position ──────────────────────────────────────────────
         let id: u64 = env
             .storage()
             .instance()
             .get(&DataKey::NextId)
             .unwrap_or(0u64);
-        let next_id = id + 1;
-        env.storage().instance().set(&DataKey::NextId, &next_id);
+        env.storage().instance().set(&DataKey::NextId, &(id + 1));
 
         let position = Position {
             id,
@@ -201,25 +206,19 @@ impl SynthVault {
             collateral,
             opened_at: env.ledger().timestamp(),
         };
-        env.storage()
-            .persistent()
-            .set(&DataKey::Position(id), &position);
+        env.storage().persistent().set(&DataKey::Position(id), &position);
 
-        // ── Track wallet's position IDs ──────────────────────────────────
         let mut ids: Vec<u64> = env
             .storage()
             .persistent()
             .get(&DataKey::WalletPositions(wallet.clone()))
             .unwrap_or_else(|| Vec::new(&env));
         ids.push_back(id);
-        env.storage()
-            .persistent()
-            .set(&DataKey::WalletPositions(wallet), &ids);
+        env.storage().persistent().set(&DataKey::WalletPositions(wallet), &ids);
 
         Ok(id)
     }
 
-    /// Close a position and return the PnL (signed, in micro-USDC).
     pub fn close_position(
         env: Env,
         wallet: Address,
@@ -243,49 +242,33 @@ impl SynthVault {
             .get(&DataKey::Price(position.asset))
             .ok_or(VaultError::InvalidAsset)?;
 
-        // PnL = collateral * leverage * (price_change / entry_price)
-        // price_change = current - entry (or entry - current for shorts)
         let raw_change = current_price - position.entry_price;
-        let signed_change = if position.direction == DIR_SHORT {
-            -raw_change
-        } else {
-            raw_change
-        };
-        // Use i128 arithmetic (6-decimal fixed point)
+        let signed_change = if position.direction == DIR_SHORT { -raw_change } else { raw_change };
         let pnl = position.collateral * (position.leverage as i128) * signed_change
             / position.entry_price;
 
-        // ── Remove position ──────────────────────────────────────────────
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Position(position_id));
-        let mut ids: Vec<u64> = env
+        env.storage().persistent().remove(&DataKey::Position(position_id));
+
+        let ids: Vec<u64> = env
             .storage()
             .persistent()
             .get(&DataKey::WalletPositions(wallet.clone()))
             .unwrap_or_else(|| Vec::new(&env));
-        // Remove the id from the vector
         let mut new_ids: Vec<u64> = Vec::new(&env);
         for eid in ids.iter() {
             if eid != position_id {
                 new_ids.push_back(eid);
             }
         }
-        env.storage()
-            .persistent()
-            .set(&DataKey::WalletPositions(wallet), &new_ids);
+        env.storage().persistent().set(&DataKey::WalletPositions(wallet), &new_ids);
 
         Ok(pnl)
     }
 
-    /// Returns a single position by ID.
     pub fn get_position(env: Env, position_id: u64) -> Option<Position> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Position(position_id))
+        env.storage().persistent().get(&DataKey::Position(position_id))
     }
 
-    /// Returns all position IDs for a wallet.
     pub fn get_wallet_positions(env: Env, wallet: Address) -> Vec<u64> {
         env.storage()
             .persistent()
