@@ -474,6 +474,28 @@ export async function closeVaultPosition(
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// TUSDC: get balance for a wallet (read-only)
+// Returns balance in whole TUSDC (e.g. 1000.50)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export async function getUserUsdcBalance(walletAddress: string): Promise<number> {
+  if (!CONTRACTS.USDC_TOKEN) return 0
+  try {
+    const retval = await simulateReadOnly(
+      CONTRACTS.USDC_TOKEN,
+      "balance",
+      [nativeToScVal(walletAddress, { type: "address" })],
+      walletAddress
+    )
+    if (!retval) return 0
+    const micro = BigInt(String(scValToNative(retval)))
+    return Number(micro) / MICRO
+  } catch {
+    return 0
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Vault: get price for one asset (read-only, no auth)
 // Returns price in whole USD (e.g. 192.35)
 // Falls back to default if contract not reachable

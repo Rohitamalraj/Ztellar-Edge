@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
-    Address, Env, Vec,
+    token, Address, Env, Vec,
 };
 
 // ──────────────────────────────────────────────
@@ -38,6 +38,7 @@ enum DataKey {
     NextId,
     Admin,
     TierManager,
+    UsdcToken,
     Price(u32),
 }
 
@@ -53,7 +54,7 @@ pub struct Position {
     pub direction: u32,
     pub leverage: u32,
     pub entry_price: i128,  // micro-USD (6 decimals)
-    pub collateral: i128,   // micro-USD (6 decimals)
+    pub collateral: i128,   // micro-USDC (6 decimals)
     pub opened_at: u64,
 }
 
@@ -64,16 +65,16 @@ pub struct Position {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum VaultError {
-    AlreadyInitialized   = 1,
-    NotInitialized       = 2,
-    Unauthorized         = 3,
-    WalletNotVerified    = 4,
+    AlreadyInitialized     = 1,
+    NotInitialized         = 2,
+    Unauthorized           = 3,
+    WalletNotVerified      = 4,
     LeverageExceedsTierCap = 5,
-    InvalidAsset         = 6,
-    InvalidLeverage      = 7,
-    InvalidCollateral    = 8,
-    PositionNotFound     = 9,
-    NotPositionOwner     = 10,
+    InvalidAsset           = 6,
+    InvalidLeverage        = 7,
+    InvalidCollateral      = 8,
+    PositionNotFound       = 9,
+    NotPositionOwner       = 10,
 }
 
 // ──────────────────────────────────────────────
@@ -88,6 +89,7 @@ impl SynthVault {
         env: Env,
         admin: Address,
         tier_manager: Address,
+        usdc_token: Address,
     ) -> Result<(), VaultError> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(VaultError::AlreadyInitialized);
@@ -95,21 +97,22 @@ impl SynthVault {
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::TierManager, &tier_manager);
+        env.storage().instance().set(&DataKey::UsdcToken, &usdc_token);
         env.storage().instance().set(&DataKey::NextId, &0u64);
 
         // Seed prices in micro-USD (price * 1_000_000)
-        env.storage().instance().set(&DataKey::Price(ASSET_AAPL), &211_450_000i128); // $211.45
-        env.storage().instance().set(&DataKey::Price(ASSET_TSLA), &248_120_000i128); // $248.12
-        env.storage().instance().set(&DataKey::Price(ASSET_NVDA), &135_800_000i128); // $135.80
-        env.storage().instance().set(&DataKey::Price(ASSET_MSFT), &452_860_000i128); // $452.86
-        env.storage().instance().set(&DataKey::Price(ASSET_AMZN), &215_450_000i128); // $215.45
-        env.storage().instance().set(&DataKey::Price(ASSET_GOOG), &185_370_000i128); // $185.37
-        env.storage().instance().set(&DataKey::Price(ASSET_META), &681_420_000i128); // $681.42
-        env.storage().instance().set(&DataKey::Price(ASSET_NFLX), &1_291_500_000i128); // $1291.50
-        env.storage().instance().set(&DataKey::Price(ASSET_AMD),  &172_180_000i128); // $172.18
-        env.storage().instance().set(&DataKey::Price(ASSET_JPM),  &272_900_000i128); // $272.90
-        env.storage().instance().set(&DataKey::Price(ASSET_SPY),  &594_200_000i128); // $594.20
-        env.storage().instance().set(&DataKey::Price(ASSET_PFE),  &25_100_000i128);  // $25.10
+        env.storage().instance().set(&DataKey::Price(ASSET_AAPL), &211_450_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_TSLA), &248_120_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_NVDA), &135_800_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_MSFT), &452_860_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_AMZN), &215_450_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_GOOG), &185_370_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_META), &681_420_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_NFLX), &1_291_500_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_AMD),  &172_180_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_JPM),  &272_900_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_SPY),  &594_200_000i128);
+        env.storage().instance().set(&DataKey::Price(ASSET_PFE),  &25_100_000i128);
         Ok(())
     }
 
@@ -144,6 +147,18 @@ impl SynthVault {
             .instance()
             .get(&DataKey::Price(asset))
             .ok_or(VaultError::InvalidAsset)
+    }
+
+    pub fn get_usdc_token(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::UsdcToken)
+    }
+
+    pub fn get_vault_usdc_balance(env: Env) -> i128 {
+        let usdc: Address = match env.storage().instance().get(&DataKey::UsdcToken) {
+            Some(a) => a,
+            None => return 0,
+        };
+        token::Client::new(&env, &usdc).balance(&env.current_contract_address())
     }
 
     pub fn open_position(
@@ -182,6 +197,17 @@ impl SynthVault {
         if leverage > max_lev {
             return Err(VaultError::LeverageExceedsTierCap);
         }
+
+        // Pull USDC collateral from wallet into vault.
+        // The wallet must authorize this sub-invocation — assembleTransaction
+        // and Freighter handle this automatically in one signing step.
+        let usdc: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::UsdcToken)
+            .ok_or(VaultError::NotInitialized)?;
+        token::Client::new(&env, &usdc)
+            .transfer(&wallet, &env.current_contract_address(), &collateral);
 
         let entry_price: i128 = env
             .storage()
@@ -246,6 +272,22 @@ impl SynthVault {
         let signed_change = if position.direction == DIR_SHORT { -raw_change } else { raw_change };
         let pnl = position.collateral * (position.leverage as i128) * signed_change
             / position.entry_price;
+
+        // Return collateral + PnL (capped at 0 on loss, capped at vault balance on win)
+        let gross = position.collateral + pnl;
+        let usdc: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::UsdcToken)
+            .ok_or(VaultError::NotInitialized)?;
+        let usdc_client = token::Client::new(&env, &usdc);
+        if gross > 0 {
+            let vault_bal = usdc_client.balance(&env.current_contract_address());
+            let return_amount = if gross <= vault_bal { gross } else { vault_bal };
+            if return_amount > 0 {
+                usdc_client.transfer(&env.current_contract_address(), &wallet, &return_amount);
+            }
+        }
 
         env.storage().persistent().remove(&DataKey::Position(position_id));
 

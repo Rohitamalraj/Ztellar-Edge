@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
-    token, Address, Env, String,
+    Address, Env, String,
 };
 
 // ──────────────────────────────────────────────
@@ -295,6 +295,28 @@ impl SynthToken {
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &(supply + amount));
+        Ok(())
+    }
+
+    /// Admin can mint directly (used for testnet faucet and vault float).
+    pub fn admin_mint(env: Env, to: Address, amount: i128) -> Result<(), TokenError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(TokenError::NotInitialized)?;
+        admin.require_auth();
+        if amount < 0 {
+            return Err(TokenError::NegativeAmount);
+        }
+        let bal: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Balance(to.clone()))
+            .unwrap_or(0);
+        env.storage().persistent().set(&DataKey::Balance(to), &(bal + amount));
+        let supply: i128 = env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0);
+        env.storage().instance().set(&DataKey::TotalSupply, &(supply + amount));
         Ok(())
     }
 

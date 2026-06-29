@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, TrendingUp, TrendingDown, ShieldAlert } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, ShieldAlert, Droplets } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,12 +17,27 @@ interface TradeFormProps {
   tier: TierNumber
   isConnected: boolean
   isVerified: boolean
-  isTradable?: boolean
+  walletAddress: string | null
+  usdcBalance: number | null
+  isFaucetLoading: boolean
+  onClaimFaucet: () => Promise<void>
   onSubmit: (direction: Direction, leverage: number, collateral: number) => Promise<void>
   isSubmitting: boolean
 }
 
-export function TradeForm({ asset, price, tier, isConnected, isVerified, isTradable = true, onSubmit, isSubmitting }: TradeFormProps) {
+export function TradeForm({
+  asset,
+  price,
+  tier,
+  isConnected,
+  isVerified,
+  walletAddress,
+  usdcBalance,
+  isFaucetLoading,
+  onClaimFaucet,
+  onSubmit,
+  isSubmitting,
+}: TradeFormProps) {
   const [direction, setDirection] = useState<Direction>("LONG")
   const [leverage, setLeverage] = useState(1)
   const [collateral, setCollateral] = useState("")
@@ -31,11 +46,18 @@ export function TradeForm({ asset, price, tier, isConnected, isVerified, isTrada
   const collateralNum = parseFloat(collateral) || 0
   const positionSize = collateralNum * leverage
   const isLong = direction === "LONG"
+  const hasEnoughBalance = usdcBalance !== null && collateralNum > 0 && collateralNum <= usdcBalance
 
   const handleSubmit = async () => {
     if (!collateralNum || collateralNum <= 0) return
     await onSubmit(direction, leverage, collateralNum)
     setCollateral("")
+  }
+
+  const handleMaxCollateral = () => {
+    if (usdcBalance && usdcBalance > 0) {
+      setCollateral(usdcBalance.toFixed(2))
+    }
   }
 
   return (
@@ -47,6 +69,43 @@ export function TradeForm({ asset, price, tier, isConnected, isVerified, isTrada
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-5">
+        {/* USDC Balance + Faucet */}
+        {isConnected && (
+          <div className="flex items-center justify-between py-2 px-3 border border-foreground/10 bg-foreground/[0.02]">
+            <div>
+              <div className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">
+                TUSDC Balance
+              </div>
+              <div className="font-mono text-sm font-medium">
+                {usdcBalance === null ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  <>
+                    {usdcBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="text-muted-foreground text-xs ml-1">TUSDC</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClaimFaucet}
+              disabled={isFaucetLoading}
+              className="font-mono text-[11px] h-7 px-2.5 border-foreground/20 hover:border-foreground/40"
+            >
+              {isFaucetLoading ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <>
+                  <Droplets className="w-3 h-3 mr-1.5" />
+                  +1000 TUSDC
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
         {/* Direction tabs */}
         <div>
           <div className="grid grid-cols-2 border border-foreground/10">
@@ -77,14 +136,36 @@ export function TradeForm({ asset, price, tier, isConnected, isVerified, isTrada
 
         {/* Collateral input */}
         <div className="space-y-2">
-          <Label className="text-xs font-mono text-muted-foreground">Collateral (USDC)</Label>
-          <Input
-            type="number"
-            placeholder="0.00"
-            value={collateral}
-            onChange={(e) => setCollateral(e.target.value)}
-            className="font-mono text-sm border-foreground/10"
-          />
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-mono text-muted-foreground">Collateral (TUSDC)</Label>
+            {usdcBalance !== null && usdcBalance > 0 && (
+              <button
+                onClick={handleMaxCollateral}
+                className="font-mono text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              >
+                MAX
+              </button>
+            )}
+          </div>
+          <div className="relative">
+            <Input
+              type="number"
+              placeholder="0.00"
+              value={collateral}
+              onChange={(e) => setCollateral(e.target.value)}
+              className={`font-mono text-sm border-foreground/10 pr-16 ${
+                collateralNum > 0 && usdcBalance !== null && collateralNum > usdcBalance
+                  ? "border-red-500/50"
+                  : ""
+              }`}
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted-foreground pointer-events-none">
+              TUSDC
+            </span>
+          </div>
+          {collateralNum > 0 && usdcBalance !== null && collateralNum > usdcBalance && (
+            <p className="font-mono text-[10px] text-red-500">Exceeds balance ({usdcBalance.toFixed(2)} TUSDC)</p>
+          )}
         </div>
 
         {/* Leverage */}
@@ -154,7 +235,12 @@ export function TradeForm({ asset, price, tier, isConnected, isVerified, isTrada
                 : "bg-red-600 hover:bg-red-700 text-white"
             }`}
             onClick={handleSubmit}
-            disabled={isSubmitting || !collateralNum || collateralNum <= 0}
+            disabled={
+              isSubmitting ||
+              !collateralNum ||
+              collateralNum <= 0 ||
+              (usdcBalance !== null && collateralNum > usdcBalance)
+            }
           >
             {isSubmitting ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening...</>

@@ -13,14 +13,17 @@ import { useFreighter } from "@/hooks/use-freighter"
 import { useTier } from "@/hooks/use-tier"
 import { usePositions, type AssetSymbol, type Direction } from "@/hooks/use-positions"
 import { usePrices } from "@/hooks/use-prices"
+import { useUsdcBalance } from "@/hooks/use-usdc-balance"
 
 export default function TradePage() {
   const { isConnected, publicKey } = useFreighter()
   const { tier, isVerified } = useTier(publicKey)
   const { positions, isOpening, openPosition, closePosition } = usePositions(publicKey)
   const prices = usePrices(publicKey)
+  const { balance: usdcBalance, isLoading: isBalanceLoading, refetch: refetchBalance } = useUsdcBalance(publicKey)
   const [selectedAsset, setSelectedAsset] = useState<AssetSymbol>("sAAPL")
   const [favorites, setFavorites] = useState<Set<AssetSymbol>>(new Set())
+  const [isFaucetLoading, setIsFaucetLoading] = useState(false)
 
   const currentPrice = prices[selectedAsset].price
 
@@ -32,10 +35,34 @@ export default function TradePage() {
     })
   }
 
+  const handleClaimFaucet = async () => {
+    if (!publicKey) {
+      toast.error("Connect your wallet first")
+      return
+    }
+    setIsFaucetLoading(true)
+    try {
+      const res = await fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: publicKey }),
+      })
+      const data = await res.json() as { success?: boolean; amount?: number; error?: string }
+      if (!res.ok || data.error) throw new Error(data.error ?? "Faucet failed")
+      toast.success(`+${data.amount ?? 1000} TUSDC added to your wallet`)
+      await refetchBalance()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Faucet error")
+    } finally {
+      setIsFaucetLoading(false)
+    }
+  }
+
   const handleOpenPosition = async (direction: Direction, leverage: number, collateral: number) => {
     try {
       await openPosition(selectedAsset, direction, leverage, collateral, currentPrice)
       toast.success(`${direction} ${selectedAsset} ${leverage}x opened`)
+      await refetchBalance()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to open position")
     }
@@ -46,6 +73,7 @@ export default function TradePage() {
       const pnl = await closePosition(id)
       const sign = pnl >= 0 ? "+" : ""
       toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`)
+      await refetchBalance()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to close position")
     }
@@ -79,7 +107,10 @@ export default function TradePage() {
               tier={tier}
               isConnected={isConnected}
               isVerified={isVerified}
-
+              walletAddress={publicKey}
+              usdcBalance={usdcBalance}
+              isFaucetLoading={isFaucetLoading || isBalanceLoading}
+              onClaimFaucet={handleClaimFaucet}
               onSubmit={handleOpenPosition}
               isSubmitting={isOpening}
             />
