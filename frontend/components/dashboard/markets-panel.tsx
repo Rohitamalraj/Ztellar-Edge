@@ -132,9 +132,18 @@ export function MarketsPanel({ selected, onSelect, prices, favorites, onToggleFa
                   isSelected ? "bg-foreground/[0.04]" : ""
                 }`}
               >
-                {/* Star */}
-                <button
+                {/* Star — div not button to avoid nested-button HTML violation */}
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={(e) => { e.stopPropagation(); onToggleFavorite(symbol) }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onToggleFavorite(symbol)
+                    }
+                  }}
                   className="flex items-center justify-center"
                 >
                   <Star
@@ -142,7 +151,7 @@ export function MarketsPanel({ selected, onSelect, prices, favorites, onToggleFa
                       favorites.has(symbol) ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground/40 hover:text-muted-foreground"
                     }`}
                   />
-                </button>
+                </div>
 
                 {/* Name + logo */}
                 <div className="flex items-center gap-2.5 min-w-0">

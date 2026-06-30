@@ -87,8 +87,6 @@ export default function TradePage() {
 
   const handleClosePosition = async (id: string) => {
     try {
-      // Push latest prices on-chain before settling so PnL reflects live market
-      await fetch("/api/oracle", { method: "POST" }).catch(() => {})
       const pnl = await closePosition(id)
       const sign = pnl >= 0 ? "+" : ""
       toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`)

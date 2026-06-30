@@ -36,6 +36,10 @@ async function fetchPrice(ticker: string): Promise<number | null> {
 
 const server = new rpc.Server(RPC_URL, { allowHttp: false })
 
+// Module-level lock — prevents two concurrent oracle TXs from the same admin account
+// which would cause txBadSeq (sequence number conflict).
+let oracleInFlight = false
+
 async function sendAndWait(tx: Parameters<typeof server.sendTransaction>[0]) {
   const submit = await server.sendTransaction(tx)
   if (submit.status === "ERROR") throw new Error("Oracle TX error: " + JSON.stringify(submit.errorResult))
@@ -49,10 +53,15 @@ async function sendAndWait(tx: Parameters<typeof server.sendTransaction>[0]) {
 }
 
 export async function POST() {
+  if (oracleInFlight) {
+    return NextResponse.json({ skipped: true, reason: "oracle already running" }, { status: 200 })
+  }
+  oracleInFlight = true
   try {
     const adminSecret = process.env.ADMIN_SECRET
     const vaultId     = process.env.NEXT_PUBLIC_SYNTH_VAULT_CONTRACT_ID
     if (!adminSecret || !vaultId) {
+      oracleInFlight = false
       return NextResponse.json({ error: "Oracle not configured" }, { status: 503 })
     }
 
@@ -98,6 +107,8 @@ export async function POST() {
       { error: err instanceof Error ? err.message : "Oracle error" },
       { status: 500 }
     )
+  } finally {
+    oracleInFlight = false
   }
 }
 
