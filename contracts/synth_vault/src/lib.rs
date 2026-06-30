@@ -149,6 +149,27 @@ impl SynthVault {
             .ok_or(VaultError::InvalidAsset)
     }
 
+    /// Bulk-update all 12 asset prices in one TX (used by price oracle).
+    /// prices must be exactly ASSET_COUNT elements, micro-USD (6 decimals).
+    pub fn set_prices(env: Env, prices: Vec<i128>) -> Result<(), VaultError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(VaultError::NotInitialized)?;
+        admin.require_auth();
+        if prices.len() != ASSET_COUNT {
+            return Err(VaultError::InvalidAsset);
+        }
+        for i in 0..ASSET_COUNT {
+            let price = prices.get(i).unwrap();
+            if price > 0 {
+                env.storage().instance().set(&DataKey::Price(i), &price);
+            }
+        }
+        Ok(())
+    }
+
     pub fn get_usdc_token(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::UsdcToken)
     }

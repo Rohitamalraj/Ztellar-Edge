@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { DashboardNav } from "@/components/dashboard/dashboard-nav"
 import { TradingLayout } from "@/components/dashboard/trading-layout"
@@ -24,6 +24,23 @@ export default function TradePage() {
   const [selectedAsset, setSelectedAsset] = useState<AssetSymbol>("sAAPL")
   const [favorites, setFavorites] = useState<Set<AssetSymbol>>(new Set())
   const [isFaucetLoading, setIsFaucetLoading] = useState(false)
+  const oracleRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Push live prices to vault on mount and every 60s
+  useEffect(() => {
+    const pushPrices = () =>
+      fetch("/api/oracle", { method: "POST" })
+        .then((r) => r.json())
+        .then((d: { prices?: Record<string, number>; error?: string }) => {
+          if (d.error) console.warn("[oracle]", d.error)
+          else console.log("[oracle] prices updated:", d.prices)
+        })
+        .catch((e) => console.warn("[oracle] fetch error:", e))
+
+    pushPrices()
+    oracleRef.current = setInterval(pushPrices, 60_000)
+    return () => { if (oracleRef.current) clearInterval(oracleRef.current) }
+  }, [])
 
   const currentPrice = prices[selectedAsset].price
 
@@ -70,6 +87,8 @@ export default function TradePage() {
 
   const handleClosePosition = async (id: string) => {
     try {
+      // Push latest prices on-chain before settling so PnL reflects live market
+      await fetch("/api/oracle", { method: "POST" }).catch(() => {})
       const pnl = await closePosition(id)
       const sign = pnl >= 0 ? "+" : ""
       toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`)
