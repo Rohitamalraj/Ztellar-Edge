@@ -19,9 +19,20 @@ export default function PositionsPage() {
 
   const handleClose = async (id: string) => {
     try {
-      const pnl = await closePosition(id)
+      const { pnl, txHash } = await closePosition(id)
       const sign = pnl >= 0 ? "+" : ""
-      toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`)
+      toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`, {
+        description: (
+          <a
+            href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-xs underline opacity-70 hover:opacity-100"
+          >
+            {txHash.slice(0, 8)}…{txHash.slice(-8)}
+          </a>
+        ),
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to close position"
       toast.error(msg)

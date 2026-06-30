@@ -75,10 +75,24 @@ export default function TradePage() {
     }
   }
 
+  const explorerUrl = (hash: string) =>
+    `https://stellar.expert/explorer/testnet/tx/${hash}`
+
   const handleOpenPosition = async (direction: Direction, leverage: number, collateral: number) => {
     try {
-      await openPosition(selectedAsset, direction, leverage, collateral, currentPrice)
-      toast.success(`${direction} ${selectedAsset} ${leverage}x opened`)
+      const { txHash } = await openPosition(selectedAsset, direction, leverage, collateral, currentPrice)
+      toast.success(`${direction} ${selectedAsset} ${leverage}x opened`, {
+        description: (
+          <a
+            href={explorerUrl(txHash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-xs underline opacity-70 hover:opacity-100"
+          >
+            {txHash.slice(0, 8)}…{txHash.slice(-8)}
+          </a>
+        ),
+      })
       await refetchBalance()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to open position")
@@ -87,9 +101,20 @@ export default function TradePage() {
 
   const handleClosePosition = async (id: string) => {
     try {
-      const pnl = await closePosition(id)
+      const { pnl, txHash } = await closePosition(id)
       const sign = pnl >= 0 ? "+" : ""
-      toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`)
+      toast.success(`Position closed  ${sign}$${pnl.toFixed(2)} PnL`, {
+        description: (
+          <a
+            href={explorerUrl(txHash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-xs underline opacity-70 hover:opacity-100"
+          >
+            {txHash.slice(0, 8)}…{txHash.slice(-8)}
+          </a>
+        ),
+      })
       await refetchBalance()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to close position")

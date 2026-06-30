@@ -85,7 +85,7 @@ export function usePositions(publicKey: string | null) {
       setIsOpening(true)
       try {
         console.log("📊 [ZE] openPosition:", { asset, direction, leverage, collateralUSDC })
-        const positionId = await openVaultPosition(
+        const { positionId, txHash } = await openVaultPosition(
           publicKey,
           ASSET_ID[asset],
           DIR_ID[direction],
@@ -95,7 +95,7 @@ export function usePositions(publicKey: string | null) {
         console.log("✅ [ZE] openPosition — positionId:", positionId)
         // Refresh from chain so the new position appears with correct entry price
         await loadPositions()
-        return positionId
+        return { positionId, txHash }
       } finally {
         setIsOpening(false)
       }
@@ -107,11 +107,11 @@ export function usePositions(publicKey: string | null) {
     async (id: string) => {
       if (!publicKey) throw new Error("Wallet not connected")
       console.log("📊 [ZE] closePosition — id:", id)
-      const pnl = await closeVaultPosition(publicKey, id)
+      const { pnl, txHash } = await closeVaultPosition(publicKey, id)
       console.log(`✅ [ZE] closePosition — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`)
       // Remove locally immediately, then sync from chain
       setPositions((prev) => prev.filter((p) => p.id !== id))
-      return pnl
+      return { pnl, txHash }
     },
     [publicKey]
   )

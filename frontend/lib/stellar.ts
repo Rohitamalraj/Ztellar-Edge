@@ -341,7 +341,7 @@ async function submitVaultCall(
   walletAddress: string,
   method: string,
   args: xdr.ScVal[]
-): Promise<xdr.ScVal> {
+): Promise<{ retval: xdr.ScVal; hash: string }> {
   console.group(`🌟 [ZE] submitVaultCall — ${method}`)
   console.log("wallet:", walletAddress, "contract:", CONTRACTS.SYNTH_VAULT)
 
@@ -407,7 +407,7 @@ async function submitVaultCall(
       if (!txResult.returnValue) throw new Error("No return value")
       console.log("✅ confirmed")
       console.groupEnd()
-      return txResult.returnValue
+      return { retval: txResult.returnValue, hash }
     }
     if (txResult.status === rpc.Api.GetTransactionStatus.FAILED) {
       console.error("❌ failed on-chain")
@@ -433,7 +433,7 @@ export async function openVaultPosition(
   directionId: number,
   leverage: number,
   collateralUSDC: number
-): Promise<string> {
+): Promise<{ positionId: string; txHash: string }> {
   const collateralMicro = BigInt(Math.round(collateralUSDC * MICRO))
   console.log("📊 [ZE] openVaultPosition", {
     asset: ASSET_SYMBOL[assetId],
@@ -441,7 +441,7 @@ export async function openVaultPosition(
     leverage: `${leverage}x`,
     collateral: `$${collateralUSDC} USDC (${collateralMicro} micro)`,
   })
-  const retval = await submitVaultCall(walletAddress, "open_position", [
+  const { retval, hash } = await submitVaultCall(walletAddress, "open_position", [
     nativeToScVal(walletAddress, { type: "address" }),
     nativeToScVal(assetId, { type: "u32" }),
     nativeToScVal(directionId, { type: "u32" }),
@@ -450,7 +450,7 @@ export async function openVaultPosition(
   ])
   const positionId = String(scValToNative(retval))
   console.log("✅ [ZE] openVaultPosition — positionId:", positionId)
-  return positionId
+  return { positionId, txHash: hash }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -461,16 +461,16 @@ export async function openVaultPosition(
 export async function closeVaultPosition(
   walletAddress: string,
   positionId: string
-): Promise<number> {
+): Promise<{ pnl: number; txHash: string }> {
   console.log("📊 [ZE] closeVaultPosition — id:", positionId)
-  const retval = await submitVaultCall(walletAddress, "close_position", [
+  const { retval, hash } = await submitVaultCall(walletAddress, "close_position", [
     nativeToScVal(walletAddress, { type: "address" }),
     nativeToScVal(BigInt(positionId), { type: "u64" }),
   ])
   const pnlMicro = BigInt(String(scValToNative(retval)))
   const pnl = Number(pnlMicro) / MICRO
   console.log(`✅ [ZE] closeVaultPosition — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} USDC`)
-  return pnl
+  return { pnl, txHash: hash }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
