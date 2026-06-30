@@ -7,7 +7,7 @@ import { PositionCard } from "./position-card"
 interface PositionsPanelProps {
   positions: Position[]
   prices: Prices
-  onClose: (id: string) => void
+  onClose: (id: string) => Promise<void>
 }
 
 export function PositionsPanel({ positions, prices, onClose }: PositionsPanelProps) {
