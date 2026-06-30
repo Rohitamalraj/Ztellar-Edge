@@ -74,7 +74,7 @@ export function TradeForm({
           <div className="flex items-center justify-between py-2 px-3 border border-foreground/10 bg-foreground/[0.02]">
             <div>
               <div className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">
-                TUSDC Balance
+                USDC Balance
               </div>
               <div className="font-mono text-sm font-medium">
                 {usdcBalance === null ? (
@@ -82,7 +82,7 @@ export function TradeForm({
                 ) : (
                   <>
                     {usdcBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    <span className="text-muted-foreground text-xs ml-1">TUSDC</span>
+                    <span className="text-muted-foreground text-xs ml-1">USDC</span>
                   </>
                 )}
               </div>
@@ -99,7 +99,7 @@ export function TradeForm({
               ) : (
                 <>
                   <Droplets className="w-3 h-3 mr-1.5" />
-                  +1000 TUSDC
+                  +1000 USDC
                 </>
               )}
             </Button>
@@ -137,7 +137,7 @@ export function TradeForm({
         {/* Collateral input */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label className="text-xs font-mono text-muted-foreground">Collateral (TUSDC)</Label>
+            <Label className="text-xs font-mono text-muted-foreground">Collateral (USDC)</Label>
             {usdcBalance !== null && usdcBalance > 0 && (
               <button
                 onClick={handleMaxCollateral}
@@ -160,11 +160,11 @@ export function TradeForm({
               }`}
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted-foreground pointer-events-none">
-              TUSDC
+              USDC
             </span>
           </div>
           {collateralNum > 0 && usdcBalance !== null && collateralNum > usdcBalance && (
-            <p className="font-mono text-[10px] text-red-500">Exceeds balance ({usdcBalance.toFixed(2)} TUSDC)</p>
+            <p className="font-mono text-[10px] text-red-500">Exceeds balance ({usdcBalance.toFixed(2)} USDC)</p>
           )}
         </div>
 

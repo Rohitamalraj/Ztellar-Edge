@@ -12,7 +12,7 @@ import {
 
 const RPC_URL = "https://soroban-testnet.stellar.org"
 const NETWORK_PASSPHRASE = Networks.TESTNET
-const FAUCET_AMOUNT = BigInt(1_000) * BigInt(1_000_000) // 1000 TUSDC (6 decimals)
+const FAUCET_AMOUNT = BigInt(1_000) * BigInt(1_000_000) // 1000 USDC (6 decimals)
 
 const server = new rpc.Server(RPC_URL, { allowHttp: false })
 
@@ -59,9 +59,10 @@ export async function POST(req: NextRequest) {
     })
       .addOperation(
         contract.call(
-          "admin_mint",
-          nativeToScVal(wallet, { type: "address" }),
-          nativeToScVal(FAUCET_AMOUNT, { type: "i128" }),
+          "mint",
+          // Circle testnet USDC mint signature: mint(amount, to)
+          nativeToScVal(FAUCET_AMOUNT, { type: "i128"    }),
+          nativeToScVal(wallet,        { type: "address" }),
         )
       )
       .setTimeout(180)

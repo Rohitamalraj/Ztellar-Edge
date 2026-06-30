@@ -474,8 +474,8 @@ export async function closeVaultPosition(
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// TUSDC: get balance for a wallet (read-only)
-// Returns balance in whole TUSDC (e.g. 1000.50)
+// USDC: get balance for a wallet (read-only)
+// Returns balance in whole USDC (e.g. 1000.50)
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function getUserUsdcBalance(walletAddress: string): Promise<number> {

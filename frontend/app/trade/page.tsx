@@ -49,7 +49,7 @@ export default function TradePage() {
       })
       const data = await res.json() as { success?: boolean; amount?: number; error?: string }
       if (!res.ok || data.error) throw new Error(data.error ?? "Faucet failed")
-      toast.success(`+${data.amount ?? 1000} TUSDC added to your wallet`)
+      toast.success(`+${data.amount ?? 1000} USDC added to your wallet`)
       await refetchBalance()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Faucet error")
