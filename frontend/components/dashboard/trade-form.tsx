@@ -44,7 +44,8 @@ export function TradeForm({
 
   const maxLeverage = tierLeverageCap(tier)
   const collateralNum = parseFloat(collateral) || 0
-  const positionSize = collateralNum * leverage
+  const positionSize = collateralNum * leverage        // notional USD
+  const synthQty     = price > 0 ? positionSize / price : 0  // synth units
   const isLong = direction === "LONG"
   const hasEnoughBalance = usdcBalance !== null && collateralNum > 0 && collateralNum <= usdcBalance
 
@@ -193,9 +194,20 @@ export function TradeForm({
         {/* Stats */}
         <div className="space-y-2 pt-2 border-t border-foreground/10">
           {[
-            { label: "Entry price", value: `$${price.toFixed(2)}` },
-            { label: "Position size", value: positionSize > 0 ? `$${positionSize.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : "—" },
-            { label: "Leverage cap", value: maxLeverage > 0 ? `${maxLeverage}x` : "Unverified" },
+            { label: "Entry price",   value: `$${price.toFixed(2)}` },
+            {
+              label: "Position size",
+              value: positionSize > 0
+                ? `$${positionSize.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+                : "—",
+            },
+            {
+              label: "Qty",
+              value: synthQty > 0
+                ? `${synthQty.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ${asset}`
+                : "—",
+            },
+            { label: "Leverage cap",  value: maxLeverage > 0 ? `${maxLeverage}x` : "Unverified" },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between">
               <span className="text-xs font-mono text-muted-foreground">{label}</span>
