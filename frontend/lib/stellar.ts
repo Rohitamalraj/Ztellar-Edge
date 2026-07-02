@@ -297,7 +297,8 @@ export const ASSET_SYMBOL: Record<number, string> = {
 }
 export const DIR_ID: Record<string, number> = { LONG: 0, SHORT: 1 }
 export const DIR_SYMBOL: Record<number, string> = { 0: "LONG", 1: "SHORT" }
-const MICRO = 1_000_000 // 6-decimal fixed point used by vault
+const PRICE_MICRO = 1_000_000   // oracle prices: 6-decimal (price * 1e6)
+const USDC_MICRO  = 10_000_000  // Stellar classic USDC: 7-decimal (1 USDC = 10_000_000 units)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helper: read-only simulation (no auth, no sequence number needed)
@@ -434,12 +435,12 @@ export async function openVaultPosition(
   leverage: number,
   collateralUSDC: number
 ): Promise<{ positionId: string; txHash: string }> {
-  const collateralMicro = BigInt(Math.round(collateralUSDC * MICRO))
+  const collateralMicro = BigInt(Math.round(collateralUSDC * USDC_MICRO))
   console.log("📊 [ZE] openVaultPosition", {
     asset: ASSET_SYMBOL[assetId],
     direction: DIR_SYMBOL[directionId],
     leverage: `${leverage}x`,
-    collateral: `$${collateralUSDC} USDC (${collateralMicro} micro)`,
+    collateral: `$${collateralUSDC} USDC (${collateralMicro} raw)`,
   })
   const { retval, hash } = await submitVaultCall(walletAddress, "open_position", [
     nativeToScVal(walletAddress, { type: "address" }),
@@ -468,7 +469,7 @@ export async function closeVaultPosition(
     nativeToScVal(BigInt(positionId), { type: "u64" }),
   ])
   const pnlMicro = BigInt(String(scValToNative(retval)))
-  const pnl = Number(pnlMicro) / MICRO
+  const pnl = Number(pnlMicro) / USDC_MICRO
   console.log(`✅ [ZE] closeVaultPosition — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} USDC`)
   return { pnl, txHash: hash }
 }
@@ -489,7 +490,7 @@ export async function getUserUsdcBalance(walletAddress: string): Promise<number>
     )
     if (!retval) return 0
     const micro = BigInt(String(scValToNative(retval)))
-    return Number(micro) / MICRO
+    return Number(micro) / USDC_MICRO
   } catch {
     return 0
   }
@@ -514,7 +515,7 @@ export async function getVaultPrice(assetId: number, sourceAddress: string): Pro
     )
     if (!retval) return PRICE_FALLBACK[assetId] ?? 0
     const priceMicro = BigInt(String(scValToNative(retval)))
-    return Number(priceMicro) / MICRO
+    return Number(priceMicro) / PRICE_MICRO
   } catch {
     return PRICE_FALLBACK[assetId] ?? 0
   }
@@ -584,8 +585,8 @@ export async function getVaultPosition(
       asset: ASSET_SYMBOL[Number(raw.asset)] ?? "sAAPL",
       direction: DIR_SYMBOL[Number(raw.direction)] ?? "LONG",
       leverage: Number(raw.leverage),
-      entryPrice: Number(BigInt(String(raw.entry_price))) / MICRO,
-      collateralUSDC: Number(BigInt(String(raw.collateral))) / MICRO,
+      entryPrice: Number(BigInt(String(raw.entry_price))) / PRICE_MICRO,
+      collateralUSDC: Number(BigInt(String(raw.collateral))) / USDC_MICRO,
       openedAt: new Date(Number(raw.opened_at) * 1000),
     }
     console.log("✅ [ZE] getVaultPosition:", position)

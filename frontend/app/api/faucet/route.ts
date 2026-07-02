@@ -12,7 +12,10 @@ import {
 
 const RPC_URL = "https://soroban-testnet.stellar.org"
 const NETWORK_PASSPHRASE = Networks.TESTNET
-const FAUCET_AMOUNT = BigInt(1_000) * BigInt(1_000_000) // 1000 USDC (6 decimals)
+
+// 100 USDC — Stellar classic USDC uses 7 decimals (1 USDC = 10_000_000 units)
+const FAUCET_AMOUNT = BigInt(100) * BigInt(10_000_000)
+const FAUCET_USDC   = 100
 
 const server = new rpc.Server(RPC_URL, { allowHttp: false })
 
@@ -41,8 +44,8 @@ export async function POST(req: NextRequest) {
     }
 
     const adminSecret = process.env.ADMIN_SECRET
-    const tusdcId     = process.env.NEXT_PUBLIC_USDC_CONTRACT_ID
-    if (!adminSecret || !tusdcId) {
+    const sacId       = process.env.NEXT_PUBLIC_USDC_CONTRACT_ID
+    if (!adminSecret || !sacId) {
       return NextResponse.json({ error: "Faucet not configured" }, { status: 503 })
     }
 
@@ -52,17 +55,19 @@ export async function POST(req: NextRequest) {
     const acctData = await server.getAccount(admin)
     const acct     = new Account(admin, acctData.sequenceNumber())
 
-    const contract = new Contract(tusdcId)
+    // SAC transfer: transfer(from: admin, to: wallet, amount: i128)
+    // Admin's signature on this TX satisfies require_auth() for admin as `from`.
+    const contract = new Contract(sacId)
     const tx = new TransactionBuilder(acct, {
       fee: BASE_FEE,
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(
         contract.call(
-          "mint",
-          // Circle testnet USDC mint signature: mint(amount, to)
-          nativeToScVal(FAUCET_AMOUNT, { type: "i128"    }),
+          "transfer",
+          nativeToScVal(admin,         { type: "address" }),
           nativeToScVal(wallet,        { type: "address" }),
+          nativeToScVal(FAUCET_AMOUNT, { type: "i128"    }),
         )
       )
       .setTimeout(180)
@@ -76,7 +81,7 @@ export async function POST(req: NextRequest) {
     prepared.sign(kp)
 
     const hash = await sendAndWait(prepared as Parameters<typeof server.sendTransaction>[0])
-    return NextResponse.json({ success: true, hash, amount: 1000 })
+    return NextResponse.json({ success: true, hash, amount: FAUCET_USDC })
   } catch (err) {
     console.error("[faucet] error:", err)
     return NextResponse.json(

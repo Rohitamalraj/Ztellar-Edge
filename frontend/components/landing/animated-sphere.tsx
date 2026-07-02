@@ -4,6 +4,9 @@ import { useEffect, useRef } from "react"
 
 export function AnimatedSphere() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const frameRef  = useRef(0)
+  const activeRef = useRef(false)
+  const lastTimeRef = useRef(0)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -11,78 +14,93 @@ export function AnimatedSphere() {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    let animationId: number
-    let t = 0
+    const chars = "░▒▓█▀▄▌▐│─┤├┴┬╭╮╰╯"
+    let time = 0
 
     const resize = () => {
-      canvas.width = canvas.offsetWidth * window.devicePixelRatio
-      canvas.height = canvas.offsetHeight * window.devicePixelRatio
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+      const dpr  = window.devicePixelRatio || 1
+      const rect = canvas.getBoundingClientRect()
+      canvas.width  = rect.width  * dpr
+      canvas.height = rect.height * dpr
+      ctx.scale(dpr, dpr)
     }
     resize()
     window.addEventListener("resize", resize)
 
-    const draw = () => {
-      const w = canvas.offsetWidth
-      const h = canvas.offsetHeight
-      ctx.clearRect(0, 0, w, h)
-      const cx = w / 2
-      const cy = h / 2
-      const r = Math.min(w, h) * 0.38
+    const observer = new IntersectionObserver(
+      ([e]) => { activeRef.current = e.isIntersecting },
+      { threshold: 0.1 }
+    )
+    observer.observe(canvas)
 
-      // Outer ring
-      ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      ctx.strokeStyle = "rgba(0,0,0,0.08)"
-      ctx.lineWidth = 1
-      ctx.stroke()
+    const render = (timestamp: number) => {
+      if (!activeRef.current) { frameRef.current = requestAnimationFrame(render); return }
+      if (timestamp - lastTimeRef.current < 33) { frameRef.current = requestAnimationFrame(render); return }
+      lastTimeRef.current = timestamp
 
-      // Rotating orbit rings
-      for (let i = 0; i < 3; i++) {
-        const angle = t * 0.3 + (i * Math.PI * 2) / 3
-        const rx = r * (0.6 + i * 0.15)
-        const ry = r * (0.3 + i * 0.08)
+      const rect = canvas.getBoundingClientRect()
+      ctx.clearRect(0, 0, rect.width, rect.height)
+      const centerX = rect.width  / 2
+      const centerY = rect.height / 2
+      const radius  = Math.min(rect.width, rect.height) * 0.525
 
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(angle)
-        ctx.beginPath()
-        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
-        ctx.strokeStyle = `rgba(0,0,0,${0.06 - i * 0.015})`
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.restore()
+      ctx.font = "12px monospace"
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
+
+      const points: { x: number; y: number; z: number; char: string }[] = []
+
+      for (let phi = 0; phi < Math.PI * 2; phi += 0.22) {
+        for (let theta = 0; theta < Math.PI; theta += 0.22) {
+          const x = Math.sin(theta) * Math.cos(phi + time * 0.5)
+          const y = Math.sin(theta) * Math.sin(phi + time * 0.5)
+          const z = Math.cos(theta)
+
+          const rotY  = time * 0.3
+          const newX  = x * Math.cos(rotY) - z * Math.sin(rotY)
+          const newZ  = x * Math.sin(rotY) + z * Math.cos(rotY)
+
+          const rotX   = time * 0.2
+          const newY   = y * Math.cos(rotX) - newZ * Math.sin(rotX)
+          const finalZ = y * Math.sin(rotX) + newZ * Math.cos(rotX)
+
+          const depth     = (finalZ + 1) / 2
+          const charIndex = Math.floor(depth * (chars.length - 1))
+
+          points.push({
+            x: centerX + newX * radius,
+            y: centerY + newY * radius,
+            z: finalZ,
+            char: chars[charIndex],
+          })
+        }
       }
 
-      // Floating dots
-      for (let i = 0; i < 8; i++) {
-        const angle = (i / 8) * Math.PI * 2 + t * 0.2
-        const dx = Math.cos(angle) * r * 0.85
-        const dy = Math.sin(angle) * r * 0.5
-        const size = 2 + Math.sin(t + i) * 1
-        ctx.beginPath()
-        ctx.arc(cx + dx, cy + dy, size, 0, Math.PI * 2)
-        ctx.fillStyle = "rgba(0,0,0,0.15)"
-        ctx.fill()
-      }
+      points.sort((a, b) => a.z - b.z)
+      points.forEach((point) => {
+        const alpha = 0.15 + (point.z + 1) * 0.35
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`
+        ctx.fillText(point.char, point.x, point.y)
+      })
 
-      // Center pulse
-      const pulseR = r * 0.1 + Math.sin(t * 1.5) * r * 0.02
-      ctx.beginPath()
-      ctx.arc(cx, cy, pulseR, 0, Math.PI * 2)
-      ctx.fillStyle = "rgba(0,0,0,0.08)"
-      ctx.fill()
-
-      t += 0.01
-      animationId = requestAnimationFrame(draw)
+      time += 0.02
+      frameRef.current = requestAnimationFrame(render)
     }
 
-    draw()
+    frameRef.current = requestAnimationFrame(render)
+
     return () => {
-      cancelAnimationFrame(animationId)
       window.removeEventListener("resize", resize)
+      cancelAnimationFrame(frameRef.current)
+      observer.disconnect()
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="w-full h-full" />
+  return (
+    <canvas
+      ref={canvasRef}
+      className="w-full h-full"
+      style={{ display: "block", willChange: "transform" }}
+    />
+  )
 }

@@ -100,7 +100,7 @@ export function TradeForm({
               ) : (
                 <>
                   <Droplets className="w-3 h-3 mr-1.5" />
-                  +1000 USDC
+                  +100 USDC
                 </>
               )}
             </Button>
