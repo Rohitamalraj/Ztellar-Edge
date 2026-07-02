@@ -5,8 +5,9 @@ import Link from "next/link"
 const links = {
   Protocol: [
     { name: "Trade", href: "/trade" },
+    { name: "Portfolio", href: "/portfolio" },
+    { name: "SIP", href: "/sip" },
     { name: "Prove Identity", href: "/prove" },
-    { name: "Positions", href: "/positions" },
   ],
   Developers: [
     { name: "GitHub", href: "https://github.com" },
@@ -21,7 +22,7 @@ const links = {
   Resources: [
     { name: "Circom Docs", href: "https://docs.circom.io" },
     { name: "Stellar Hacks", href: "https://dorahacks.io" },
-    { name: "Reflector Oracle", href: "https://reflector.network" },
+    { name: "Stellar Expert", href: "https://stellar.expert" },
   ],
 }
 
@@ -69,7 +70,7 @@ export function FooterSection() {
             © 2026 Ztellar Edge · Built for Stellar Hacks: Real-World ZK
           </span>
           <span className="font-mono text-xs text-muted-foreground">
-            Powered by Soroban · BN254 · snarkjs
+            Powered by Soroban · BLS12-381 · snarkjs
           </span>
         </div>
       </div>

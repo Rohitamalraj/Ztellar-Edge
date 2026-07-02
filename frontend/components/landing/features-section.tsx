@@ -19,16 +19,16 @@ const features = [
   },
   {
     number: "03",
-    title: "Synthetic Stock Tokens",
+    title: "Synthetic Stock Positions",
     description:
-      "Deposit collateral, mint synthetic exposure to sAAPL, sTSLA, and sNVDA. Synthetic tokens follow Stellar's SEP-0041 standard. Prices are fed by the Reflector oracle network — Stellar's native decentralized price oracle.",
+      "Deposit USDC collateral and open long or short synthetic positions on 12 assets — sAAPL, sTSLA, sNVDA, sMSFT, sAMZN, sGOOG, sMETA, sNFLX, sAMD, sJPM, sSPY, and sPFE. Prices are pushed on-chain every 60 seconds by an admin oracle via the vault's set_prices instruction and settle atomically at close.",
     visual: "synth",
   },
   {
     number: "04",
     title: "Native Stellar Stack",
     description:
-      "Built on Soroban — Stellar's Rust-based smart contract platform. Uses Protocol 25 BN254 and Poseidon host functions for cheap ZK verification. Freighter wallet for user signing. No bridges, no EVM.",
+      "Built on Soroban — Stellar's Rust-based smart contract platform. Uses Protocol 25 BLS12-381 pairing_check host functions for cheap ZK verification on-chain. Freighter wallet for user signing. Systematic Investment Plans (SIP) are enforced by a dedicated Soroban contract. No bridges, no EVM.",
     visual: "chain",
   },
 ]
@@ -85,48 +85,57 @@ function TierVisual() {
 }
 
 function SynthVisual() {
-  const assets = ["sAAPL", "sTSLA", "sNVDA"]
-  const widths = [110, 85, 95]
+  const rows = [
+    { label: "sAAPL", w: 110 },
+    { label: "sTSLA", w:  85 },
+    { label: "sNVDA", w:  95 },
+    { label: "sMSFT", w: 120 },
+    { label: "sAMZN", w:  75 },
+  ]
   return (
-    <svg viewBox="0 0 200 160" className="w-full h-full">
-      {assets.map((a, i) => (
-        <g key={a}>
-          <rect x="30" y={30 + i * 38} width="140" height="26" rx="3" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.3" />
-          <rect x="30" y={30 + i * 38} width="0" height="26" rx="3" fill="currentColor" opacity="0.12">
-            <animate attributeName="width" values={`0;${widths[i]}`} dur="1.5s" begin={`${i * 0.3}s`} fill="freeze" />
+    <svg viewBox="0 0 200 185" className="w-full h-full">
+      {rows.map((r, i) => (
+        <g key={r.label}>
+          <rect x="18" y={8 + i * 34} width="164" height="22" rx="2" fill="none" stroke="currentColor" strokeWidth="0.8" opacity="0.25" />
+          <rect x="18" y={8 + i * 34} width="0" height="22" rx="2" fill="currentColor" opacity="0.10">
+            <animate attributeName="width" values={`0;${r.w}`} dur="1.2s" begin={`${i * 0.2}s`} fill="freeze" />
           </rect>
-          <text x="40" y={47 + i * 38} fontSize="9" fontFamily="monospace" fill="currentColor">{a}</text>
-          <circle cx="158" cy={43 + i * 38} r="3" fill="currentColor" opacity="0.6">
-            <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin={`${i * 0.4}s`} repeatCount="indefinite" />
+          <text x="26" y={23 + i * 34} fontSize="8" fontFamily="monospace" fill="currentColor" opacity="0.85">{r.label}</text>
+          <circle cx="172" cy={19 + i * 34} r="2.5" fill="currentColor" opacity="0.5">
+            <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin={`${i * 0.35}s`} repeatCount="indefinite" />
           </circle>
         </g>
       ))}
+      <text x="100" y="182" textAnchor="middle" fontSize="7" fontFamily="monospace" fill="currentColor" opacity="0.35">+7 more assets</text>
     </svg>
   )
 }
 
 function ChainVisual() {
+  const contracts = ["ZK\nVERIFY", "TIER\nMGR", "VAULT", "SIP"]
   return (
     <svg viewBox="0 0 200 160" className="w-full h-full">
-      {[0, 1, 2].map((i) => (
-        <g key={i}>
-          <rect x={20 + i * 60} y="55" width="50" height="50" rx="4" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <animate attributeName="opacity" values="0.4;1;0.4" dur="3s" begin={`${i}s`} repeatCount="indefinite" />
-          </rect>
-          <text x={45 + i * 60} y="80" textAnchor="middle" fontSize="7" fontFamily="monospace" fill="currentColor" opacity="0.7">
-            {["ZK VERIFY", "TIER MGR", "VAULT"][i].split(" ").map((w, wi) => (
-              <tspan key={wi} x={45 + i * 60} dy={wi === 0 ? 0 : 10}>{w}</tspan>
+      {contracts.map((label, i) => {
+        const x = 8 + i * 47
+        return (
+          <g key={label}>
+            <rect x={x} y="45" width="40" height="44" rx="3" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <animate attributeName="opacity" values="0.4;1;0.4" dur="3s" begin={`${i * 0.75}s`} repeatCount="indefinite" />
+            </rect>
+            {label.split("\n").map((word, wi) => (
+              <text key={wi} x={x + 20} y={63 + wi * 11} textAnchor="middle" fontSize="6.5" fontFamily="monospace" fill="currentColor" opacity="0.75">
+                {word}
+              </text>
             ))}
-          </text>
-          {i < 2 && (
-            <line x1={70 + i * 60} y1="80" x2={80 + i * 60} y2="80" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2">
-              <animate attributeName="stroke-dashoffset" values="0;-5" dur="0.5s" repeatCount="indefinite" />
-            </line>
-          )}
-        </g>
-      ))}
-      <text x="100" y="130" textAnchor="middle" fontSize="9" fontFamily="monospace" fill="currentColor" opacity="0.5">Stellar Soroban</text>
-      <line x1="40" y1="122" x2="160" y2="122" stroke="currentColor" strokeWidth="0.5" opacity="0.3" />
+            {i < contracts.length - 1 && (
+              <line x1={x + 40} y1="67" x2={x + 47} y2="67" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2">
+                <animate attributeName="stroke-dashoffset" values="0;-4" dur="0.4s" repeatCount="indefinite" />
+              </line>
+            )}
+          </g>
+        )
+      })}
+      <text x="100" y="118" textAnchor="middle" fontSize="8" fontFamily="monospace" fill="currentColor" opacity="0.4">Stellar Soroban · BLS12-381</text>
     </svg>
   )
 }

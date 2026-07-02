@@ -1,6 +1,5 @@
 import { AppNav } from "@/components/app/app-nav"
 import { HeroSection } from "@/components/landing/hero-section"
-import { PriceTicker } from "@/components/landing/price-ticker"
 import { FeaturesSection } from "@/components/landing/features-section"
 import { HowItWorksSection } from "@/components/landing/how-it-works-section"
 import { MetricsSection } from "@/components/landing/metrics-section"
@@ -15,7 +14,6 @@ export default function Home() {
       <AppNav />
       <main>
         <HeroSection />
-        <PriceTicker />
         <MetricsSection />
         <FeaturesSection />
         <HowItWorksSection />

@@ -16,7 +16,7 @@ const steps = [
   {
     step: "03",
     title: "Verify On Stellar",
-    description: "The proof is submitted to a Soroban verifier contract that calls Stellar's native BN254 pairing_check host function. Your tier is stored on-chain.",
+    description: "The proof is submitted to a Soroban verifier contract that calls Stellar's native BLS12-381 pairing_check host function. Your tier is stored on-chain.",
   },
   {
     step: "04",
