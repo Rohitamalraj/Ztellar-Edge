@@ -5,6 +5,7 @@ members = [
     "tier_manager",
     "synth_vault",
     "synth_token",
+    "synth_sip",
 ]
 
 [workspace.dependencies]

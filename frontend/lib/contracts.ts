@@ -3,6 +3,7 @@ export const CONTRACTS = {
   TIER_MANAGER:  process.env.NEXT_PUBLIC_TIER_MANAGER_CONTRACT_ID  ?? "",
   SYNTH_VAULT:   process.env.NEXT_PUBLIC_SYNTH_VAULT_CONTRACT_ID   ?? "",
   USDC_TOKEN:    process.env.NEXT_PUBLIC_USDC_CONTRACT_ID          ?? "",
+  SYNTH_SIP:     process.env.NEXT_PUBLIC_SYNTH_SIP_CONTRACT_ID     ?? "",
   SYNTH_AAPL:    process.env.NEXT_PUBLIC_SYNTH_AAPL_CONTRACT_ID    ?? "",
   SYNTH_TSLA:    process.env.NEXT_PUBLIC_SYNTH_TSLA_CONTRACT_ID    ?? "",
   SYNTH_NVDA:    process.env.NEXT_PUBLIC_SYNTH_NVDA_CONTRACT_ID    ?? "",

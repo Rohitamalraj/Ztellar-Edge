@@ -31,6 +31,7 @@ export function AppNav({ tier = 0, isVerified = false, onVerifyClick }: AppNavPr
   const navItems = [
     { name: "Trade", href: "/trade" },
     { name: "Positions", href: "/positions" },
+    { name: "SIP", href: "/sip" },
     { name: "Prove", href: "/prove" },
     { name: "How it works", href: isLandingPage ? "#how-it-works" : "/#how-it-works" },
   ]

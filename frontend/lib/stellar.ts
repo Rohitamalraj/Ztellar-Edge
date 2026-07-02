@@ -564,6 +564,184 @@ export interface VaultPosition {
   openedAt: Date
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// SIP: submit state-changing call (similar to submitVaultCall but for SIP contract)
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function submitSipCall(
+  walletAddress: string,
+  method: string,
+  args: xdr.ScVal[]
+): Promise<{ retval: xdr.ScVal | null; hash: string }> {
+  console.group(`🌟 [ZE] submitSipCall — ${method}`)
+  if (!CONTRACTS.SYNTH_SIP) throw new Error("SYNTH_SIP contract not configured")
+
+  const contract = new Contract(CONTRACTS.SYNTH_SIP)
+  const sourceAccount = await RPC_SERVER.getAccount(walletAddress)
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(contract.call(method, ...args))
+    .setTimeout(180)
+    .build()
+
+  const simResult = await RPC_SERVER.simulateTransaction(tx)
+  if (rpc.Api.isSimulationError(simResult)) {
+    console.error("❌ sim error:", simResult.error)
+    console.groupEnd()
+    throw new Error(`Simulation failed: ${simResult.error}`)
+  }
+  const preparedTx = rpc.assembleTransaction(tx, simResult).build()
+  const txXdr = preparedTx.toXDR()
+  const { signTransaction } = await import("@stellar/freighter-api")
+  const signResult = await signTransaction(txXdr, { networkPassphrase: NETWORK_PASSPHRASE })
+  const signedXdr =
+    typeof signResult === "string"
+      ? signResult
+      : (signResult as { signedTxXdr: string }).signedTxXdr
+  const submitResult = await RPC_SERVER.sendTransaction(
+    TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE) as Parameters<typeof RPC_SERVER.sendTransaction>[0]
+  )
+  if (submitResult.status === "ERROR") throw new Error(`Submission failed: ${submitResult.errorResult?.toXDR("base64")}`)
+
+  const hash = submitResult.hash
+  let attempts = 0
+  while (attempts < 30) {
+    await new Promise((r) => setTimeout(r, 2000))
+    const txResult = await RPC_SERVER.getTransaction(hash)
+    if (txResult.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+      console.log("✅ confirmed")
+      console.groupEnd()
+      return { retval: txResult.returnValue ?? null, hash }
+    }
+    if (txResult.status === rpc.Api.GetTransactionStatus.FAILED) {
+      console.groupEnd()
+      throw new Error("SIP transaction failed on-chain")
+    }
+    attempts++
+  }
+  console.groupEnd()
+  throw new Error("SIP transaction timed out")
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SIP: create a new SIP on-chain
+// amountUsdc = per-installment in whole USDC (e.g. 10 → 10 USDC)
+// periodSecs = seconds between investments (60=testnet, 86400=daily, etc.)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export async function createSip(
+  walletAddress: string,
+  assetId: number,
+  amountUsdc: number,
+  periodSecs: number
+): Promise<{ sipId: number; txHash: string }> {
+  const amountMicro = BigInt(Math.round(amountUsdc * USDC_MICRO))
+  const { retval, hash } = await submitSipCall(walletAddress, "create_sip", [
+    nativeToScVal(walletAddress, { type: "address" }),
+    nativeToScVal(assetId,      { type: "u32" }),
+    nativeToScVal(amountMicro,  { type: "i128" }),
+    nativeToScVal(periodSecs,   { type: "u64" }),
+  ])
+  const sipId = Number(retval ? scValToNative(retval) : 0)
+  return { sipId, txHash: hash }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SIP: execute one installment — calls vault.open_position(user, asset, LONG, 1x, amount)
+// User must sign. assembleTransaction builds the auth tree covering vault sub-invocation.
+// ──────────────────────────────────────────────────────────────────────────────
+
+export async function executeSipInvestment(
+  walletAddress: string,
+  sipId: number
+): Promise<{ txHash: string }> {
+  const { hash } = await submitSipCall(walletAddress, "invest", [
+    nativeToScVal(BigInt(sipId), { type: "u64" }),
+  ])
+  return { txHash: hash }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SIP: cancel (marks inactive on-chain, no USDC returned — funds stay in wallet)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export async function cancelSip(
+  walletAddress: string,
+  sipId: number
+): Promise<{ txHash: string }> {
+  const { hash } = await submitSipCall(walletAddress, "cancel_sip", [
+    nativeToScVal(BigInt(sipId), { type: "u64" }),
+  ])
+  return { txHash: hash }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SIP: read all SIPs for a wallet (read-only)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface SipRecord {
+  id: number
+  asset: string
+  amountUsdc: number
+  periodSecs: number
+  nextDue: Date
+  count: number
+  totalInvestedUsdc: number
+  active: boolean
+}
+
+export async function getUserSipIds(walletAddress: string): Promise<number[]> {
+  if (!CONTRACTS.SYNTH_SIP) return []
+  try {
+    const retval = await simulateReadOnly(
+      CONTRACTS.SYNTH_SIP,
+      "get_user_sips",
+      [nativeToScVal(walletAddress, { type: "address" })],
+      walletAddress
+    )
+    if (!retval) return []
+    const ids = scValToNative(retval) as bigint[]
+    return ids.map(Number)
+  } catch {
+    return []
+  }
+}
+
+export async function getSipById(sipId: number, walletAddress: string): Promise<SipRecord | null> {
+  if (!CONTRACTS.SYNTH_SIP) return null
+  try {
+    const retval = await simulateReadOnly(
+      CONTRACTS.SYNTH_SIP,
+      "get_sip",
+      [nativeToScVal(BigInt(sipId), { type: "u64" })],
+      walletAddress
+    )
+    if (!retval) return null
+    const raw = scValToNative(retval) as Record<string, unknown> | null
+    if (!raw) return null
+    return {
+      id: Number(raw.id),
+      asset: ASSET_SYMBOL[Number(raw.asset)] ?? "sAAPL",
+      amountUsdc: Number(BigInt(String(raw.amount))) / USDC_MICRO,
+      periodSecs: Number(raw.period),
+      nextDue: new Date(Number(raw.next_due) * 1000),
+      count: Number(raw.count),
+      totalInvestedUsdc: Number(BigInt(String(raw.total_invested))) / USDC_MICRO,
+      active: Boolean(raw.active),
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function getUserSips(walletAddress: string): Promise<SipRecord[]> {
+  const ids = await getUserSipIds(walletAddress)
+  const results = await Promise.all(ids.map((id) => getSipById(id, walletAddress)))
+  return results.filter((s): s is SipRecord => s !== null)
+}
+
 export async function getVaultPosition(
   positionId: string,
   sourceAddress: string
