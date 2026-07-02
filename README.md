@@ -1,4 +1,4 @@
-# Ztellar Edge — Privacy-Preserving Synthetic Stock Trading on Stellar
+# Ztellar Edge — The Firrst Privacy-Preserving Synthetic Stock Trading on Stellar
 
 > **Prove your tier. Guard your identity. Trade with edge.**
 >
