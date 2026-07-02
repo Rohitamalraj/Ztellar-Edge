@@ -10,6 +10,7 @@ import {
   DIR_ID,
   type VaultPosition,
 } from "@/lib/stellar"
+import { saveClosedTrade } from "@/lib/trade-history"
 
 export type AssetSymbol =
   | "sAAPL" | "sTSLA" | "sNVDA"
@@ -107,13 +108,28 @@ export function usePositions(publicKey: string | null) {
     async (id: string) => {
       if (!publicKey) throw new Error("Wallet not connected")
       console.log("📊 [ZE] closePosition — id:", id)
+      // Capture position data before the TX removes it from chain
+      const pos = positions.find((p) => p.id === id)
       const { pnl, txHash } = await closeVaultPosition(publicKey, id)
       console.log(`✅ [ZE] closePosition — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`)
-      // Remove locally immediately, then sync from chain
+      // Persist to local trade history so portfolio page can show it
+      if (pos) {
+        saveClosedTrade(publicKey, {
+          positionId: id,
+          asset: pos.asset,
+          direction: pos.direction as "LONG" | "SHORT",
+          leverage: pos.leverage,
+          collateralUSDC: pos.collateralUSDC,
+          entryPrice: pos.entryPrice,
+          pnl,
+          closedAt: Date.now(),
+          txHash,
+        })
+      }
       setPositions((prev) => prev.filter((p) => p.id !== id))
       return { pnl, txHash }
     },
-    [publicKey]
+    [publicKey, positions]
   )
 
   return { positions, isOpening, isLoading, openPosition, closePosition, loadPositions }
