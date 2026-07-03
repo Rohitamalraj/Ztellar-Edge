@@ -17,7 +17,7 @@ Billions of people hold stablecoins on Stellar's real-money rails — but they c
 | Metric | Value |
 |---|---|
 | Stellar payment volume (Q1 2026) | **$5.5B+** processed on the network |
-| Tokenized Real World Assets on Stellar | **$2B+** — Circle, institutional partners, sovereign deployments |
+| Tokenized Real World Assets on Stellar | **$2B+** — Circle, MoneyGram, sovereign partners |
 | Web3 identity & reputation market (2025) | **$1.20B** → projected **$12.80B by 2034** (28.9% CAGR) |
 | People locked out of US equity markets | **4.3B+** — no brokerage access across Latin America, Africa, Southeast Asia |
 | Synthetic stock demand in Stellar corridors | Persistent — remittance users already hold USDC and want equity exposure |
@@ -34,7 +34,7 @@ Without those host functions, full elliptic curve pairing math in pure Wasm woul
 
 Existing access-controlled DeFi requires users to either submit full PII (passport, address, face scan) to a custodian, or be locked out entirely. There is no middle path that grants calibrated access while preserving privacy. Legitimate, low-risk, privacy-conscious users are forced to choose between exposure and exclusion.
 
-### 2. Overcollateralization Is a Blunt Instrument
+### 2. Overcollateralisation Is a Blunt Instrument
 
 Without any signal about who a user is, protocols default to 150%+ collateral requirements for 1× exposure. This:
 - Discriminates against legitimate users who have established history elsewhere
@@ -85,7 +85,7 @@ Based on the verified tier, users open synthetic long or short positions on 12 a
 
 ## What Makes Ztellar Edge Unique
 
-| Feature | Synthetix / GMX | Traditional KYC (Onfido) | Spectral / Cred | **Ztellar Edge** |
+| Feature | Synthetix / GMX / dYdX | Traditional KYC (Onfido) | Spectral / Cred | **Ztellar Edge** |
 |---|---|---|---|---|
 | Privacy-preserving compliance | ❌ | ❌ Stores full PII | ❌ Score is public | ✅ ZK — only tier revealed |
 | On-chain leverage enforcement | Fixed collateral | Off-chain only | Soft signals only | ✅ Hard caps enforced by contract |
@@ -126,7 +126,7 @@ Five production Soroban contracts coordinate the full system:
 
 ### Stellar Asset Contract (SAC) — Circle Testnet USDC
 
-All settlement is in USDC via the Stellar Asset Contract. The vault pulls USDC from the user when a position opens, and returns USDC (collateral ± PnL) when it closes:
+All settlement is in USDC via the Stellar Asset Contract:
 
 ```
 Issuer:   GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
@@ -136,7 +136,7 @@ Decimals: 7  (1 USDC = 10,000,000 units)
 
 ### Freighter Wallet + Soroban Auth Tree
 
-Ztellar Edge is pure Stellar-native — no MetaMask, no bridges, no EVM. Freighter handles all transaction signing. Soroban's `assembleTransaction` builds the complete cross-contract authorization tree, so a single Freighter popup covers multi-hop calls:
+Ztellar Edge is pure Stellar-native — no MetaMask, no bridges, no EVM. Soroban's `assembleTransaction` builds the complete cross-contract authorization tree, so a single Freighter popup covers multi-hop calls:
 
 ```
 sip.invest()
@@ -149,51 +149,34 @@ One user click. One signature. Three contracts.
 
 ## Technical Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         BROWSER (Client)                            │
-│                                                                     │
-│  Next.js 14 · TypeScript · Tailwind CSS                             │
-│                                                                     │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
-│  │ Freighter Wallet  │  │ snarkjs           │  │ stellar-sdk      │  │
-│  │ @stellar/         │  │ Groth16 fullProve │  │ Soroban RPC      │  │
-│  │ freighter-api     │  │ (in-browser WASM) │  │ assembleTransaction│ │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-          │  POST /api/score         │ proof ScVals        │ signed tx
-          ▼                          ▼                      ▼
-┌─────────────────┐     ┌────────────────────────────────────────────┐
-│ Next.js API     │     │             Stellar Testnet (Soroban)      │
-│                 │     │                                             │
-│ /api/score      │     │  ┌────────────────┐   ┌─────────────────┐ │
-│ · Stellar Horizon     │  │  zk_verifier   │──►│  tier_manager   │ │
-│   reads tx_count│     │  │                │   │                 │ │
-│   xlm_balance   │     │  │ bls12_381_     │   │ wallet → tier   │ │
-│   account_age   │     │  │ pairing()      │   │ expiry          │ │
-│   counterparties│     │  │                │   │ nullifier set   │ │
-│ · Computes score│     │  └────────────────┘   └────────┬────────┘ │
-│ · Signs with    │     │                                 │          │
-│   Baby Jubjub   │     │  ┌──────────────────────────────▼───────┐  │
-│                 │     │  │           synth_vault                 │  │
-│ /api/prices     │     │  │                                       │  │
-│ · Coinbase +    │────►│  │ open_position(asset, dir, lev, col)  │  │
-│   Yahoo Finance │     │  │ close_position(position_id)          │  │
-│ · Pushes to     │     │  │ set_prices([price0..price11])        │  │
-│   vault every   │     │  │                                       │  │
-│   60 seconds    │     │  └──────────────┬────────────────────────┘  │
-│   via ADMIN_    │     │                 │                            │
-│   SECRET key    │     │  ┌──────────────▼────────────────────────┐  │
-│                 │     │  │           synth_sip                    │  │
-└─────────────────┘     │  │                                        │  │
-                        │  │ create_sip(asset, amount, period)     │  │
-                        │  │ invest(sip_id) → vault.open_position  │  │
-                        │  │               → usdc.transfer         │  │
-                        │  └────────────────────────────────────────┘  │
-                        │                                              │
-                        │  Circle USDC (SAC)                          │
-                        │  CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4W..  │
-                        └──────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Browser["Browser — Next.js 14 · TypeScript · Tailwind CSS"]
+        FW["Freighter Wallet\n@stellar/freighter-api"]
+        SJ["snarkjs\nGroth16 fullProve\n573 constraints · in-browser WASM"]
+        SDK["@stellar/stellar-sdk\nSoroban RPC · assembleTransaction"]
+    end
+
+    subgraph NextAPI["Next.js API Routes — server-side only"]
+        Score["/api/score\nStellar Horizon reads tx_count · xlm_balance · account_age\nBaby Jubjub EdDSA sign · NEVER reaches client"]
+        Prices["/api/prices\nCoinbase + Yahoo Finance\npush to vault every 60s via ADMIN_SECRET"]
+    end
+
+    subgraph Stellar["Stellar Testnet — Soroban"]
+        ZKV["zk_verifier\nbls12_381_pairing()"]
+        TM["tier_manager\nwallet → tier · expiry · nullifier_set"]
+        SV["synth_vault\nopen_position · close_position · set_prices\n12 assets · LONG/SHORT · USDC settle"]
+        SIP["synth_sip\ncreate_sip · invest\nnext_due enforced by ledger.timestamp"]
+        USDC["Circle USDC\nStellar Asset Contract · 7 decimals"]
+    end
+
+    Browser <-->|"wallet score request"| NextAPI
+    SDK -->|"signed tx + proof ScVals"| ZKV
+    ZKV -->|"set_tier on valid proof"| TM
+    TM -->|"get_max_leverage check"| SV
+    SIP -->|"invest → open_position"| SV
+    SV -->|"collateral + PnL transfer"| USDC
+    Prices -->|"set_prices every 60s"| SV
 ```
 
 ---
@@ -202,121 +185,133 @@ One user click. One signature. Three contracts.
 
 ### Phase 1 — Identity: ZK Proof → On-Chain Tier
 
-```
-1. User connects Freighter
-   → freighter-api.getPublicKey() → Stellar AccountID (G...)
+```mermaid
+sequenceDiagram
+    actor User
+    participant FW as Freighter
+    participant FE as Frontend
+    participant API as /api/score
+    participant HZ as Stellar Horizon
+    participant SN as snarkjs
+    participant ZKV as zk_verifier
+    participant TM as tier_manager
 
-2. Frontend calls /api/score
-   → Reads Stellar Horizon: tx_count, xlm_balance, account_age, unique_counterparties
-   → Computes tier_score (0–100) via weighted formula
-   → Signs { score, wallet, expiry } with Baby Jubjub EdDSA key (server-side only)
-   → Returns { score, sig_r, sig_s, expiry }
-
-3. Browser loads ZK circuit artifacts
-   → /public/circuits/tier_proof.wasm  (573 constraints, Groth16)
-   → /public/circuits/tier_proof.zkey
-
-4. snarkjs.groth16.fullProve()
-   Private inputs (stay in browser):  wallet_secret, score, sig_r, sig_s, sig_pk
-   Public outputs (posted on-chain):  tier, nullifier, expiry, wallet_commitment
-
-5. Proof serialized for Soroban
-   → G2 point bytes swapped: c1||c0 ordering (Soroban BLS12-381 convention)
-   → Proof + public signals packed as ScVals
-   → Freighter signs, transaction submitted
-
-6. On-chain verification in zk_verifier
-   → Nullifier checked against nullifier_set (anti-replay)
-   → bls12_381_pairing() called with proof + baked-in verifying key
-   → If valid: tier_manager.set_tier(wallet, tier, expiry, nullifier)
-   → TierVerified event emitted
+    User->>FW: Connect wallet
+    FW-->>FE: AccountID (G...)
+    FE->>API: POST { wallet }
+    API->>HZ: Read tx_count, xlm_balance, account_age, counterparties
+    HZ-->>API: Wallet activity data
+    API->>API: Compute score 0–100 · Baby Jubjub EdDSA sign
+    API-->>FE: { score, sig_r, sig_s, expiry }
+    FE->>SN: groth16.fullProve(private_inputs, wasm, zkey)
+    Note over SN: 573 constraints · runs entirely in browser<br/>score + sig never leave the device
+    SN-->>FE: { proof, publicSignals }
+    Note over FE: Swap G2 bytes c1||c0 for Soroban BLS12-381 encoding
+    FE->>FW: Sign transaction
+    FW-->>FE: Signed tx
+    FE->>ZKV: verify(proof, [tier, nullifier, expiry, wallet_commitment])
+    ZKV->>ZKV: bls12_381_pairing() — Groth16 check
+    ZKV->>ZKV: Store nullifier — prevents replay forever
+    ZKV->>TM: set_tier(wallet, tier, expiry)
+    TM-->>FE: TierVerified event
+    FE-->>User: Tier badge — Tier 1–4 with expiry shown in nav
 ```
 
 **Wallet Score Formula:**
 
-```
-score = (tx_count_norm     × 0.30)
-      + (xlm_balance_norm  × 0.25)
-      + (account_age_norm  × 0.25)
-      + (counterparty_norm × 0.20)
-
-score = clamp(score × 100, 0, 100)
-```
+| Signal | Weight |
+|---|---|
+| Transaction count | 30% |
+| XLM balance | 25% |
+| Account age (days) | 25% |
+| Unique counterparties | 20% |
 
 **Tier Thresholds:**
 
-```
-Score  0–24  → Tier 1 (Basic)    →  1× max leverage
-Score 25–49  → Tier 2 (Verified) →  2× max leverage
-Score 50–74  → Tier 3 (Trusted)  →  5× max leverage
-Score 75–100 → Tier 4 (Premium)  → 10× max leverage
-```
+| Score Range | Tier | Max Leverage |
+|---|---|---|
+| 0 – 24 | 1 · Basic | 1× |
+| 25 – 49 | 2 · Verified | 2× |
+| 50 – 74 | 3 · Trusted | 5× |
+| 75 – 100 | 4 · Premium | 10× |
 
 ---
 
 ### Phase 2 — Trade: Open and Close Synthetic Positions
 
-**Open:**
-```
-1. User selects asset (e.g. sNVDA), direction (LONG/SHORT), leverage, collateral USDC
-2. vault.open_position(asset_id, direction, leverage, collateral_usdc)
-   → Reads tier_manager.get_max_leverage(caller) — enforced atomically, not by UI
-   → Reads on-chain price from set_prices storage (pushed every 60s by price oracle)
-   → Calculates synth_qty = (collateral × leverage) / price
-   → Pulls USDC from user to vault via SAC transfer
-   → Stores Position { id, wallet, asset, direction, entry_price,
-                       leverage, collateral, synth_qty, opened_at }
-   → Returns position_id; TX hash surfaced in success toast with Stellar Expert link
-```
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant FW as Freighter
+    participant SV as synth_vault
+    participant TM as tier_manager
+    participant ORC as Price Oracle
+    participant USDC as Circle USDC SAC
 
-**PnL Calculation (live, every 2s):**
-```
-pnl = (current_price - entry_price) / entry_price × leverage × collateral
-pnl = -pnl  if direction == SHORT
-```
+    ORC->>SV: set_prices([price0..price11]) every 60s
 
-**Close:**
-```
-vault.close_position(position_id)
-→ Calculates realized PnL at current on-chain price
-→ Deletes position from contract storage
-→ Returns USDC (collateral + PnL) to user wallet
-→ Trade captured in localStorage (trade history) before TX fires
-   key: zte_trade_history_${wallet}
+    User->>FE: Select asset · direction · leverage · collateral
+    FE->>FW: Sign open_position tx
+    FW-->>FE: Signed
+    FE->>SV: open_position(asset_id, direction, leverage, collateral)
+    SV->>TM: get_max_leverage(caller)
+    TM-->>SV: max_leverage for tier
+    SV->>SV: Revert if requested leverage exceeds max
+    SV->>SV: Read on-chain price from set_prices storage
+    SV->>USDC: transfer(user → vault, collateral)
+    USDC-->>SV: Confirmed
+    SV->>SV: Store Position — asset · dir · entry_price · leverage · collateral · synth_qty
+    SV-->>FE: position_id + TX hash
+    FE-->>User: Success toast with Stellar Expert link
+
+    Note over User,USDC: Live PnL updates every 2s from on-chain prices
+
+    User->>FE: Click Close on position card
+    FE->>FW: Sign close_position tx
+    FW-->>FE: Signed
+    FE->>SV: close_position(position_id)
+    SV->>SV: pnl = (exit_price - entry_price) / entry_price × leverage × collateral
+    SV->>USDC: transfer(vault → user, collateral ± pnl)
+    USDC-->>FE: Confirmed
+    FE-->>User: Realized PnL in toast — trade saved to Portfolio history
 ```
 
 ---
 
 ### Phase 3 — SIP: Systematic Investment Plans
 
-The `synth_sip` Soroban contract enforces recurring investment schedules into vault positions:
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant FW as Freighter
+    participant SIP as synth_sip
+    participant SV as synth_vault
+    participant USDC as Circle USDC SAC
 
-```rust
-// Create a plan: invest 50 USDC weekly into sNVDA
-create_sip(user, asset_id: 2, amount: 500_000_000, period: 604800)
-// Returns: sip_id (u64)
+    User->>FE: Choose asset · amount · frequency → Create SIP
+    FE->>FW: Sign create_sip tx
+    FW-->>FE: Signed
+    FE->>SIP: create_sip(user, asset, amount, period)
+    SIP->>SIP: next_due = ledger.timestamp (immediately investable)
+    SIP-->>FE: sip_id
+    FE-->>User: SIP card appears — Invest Now button active
 
-// Each invest() call (when ledger.timestamp >= next_due):
-invest(sip_id)
-→ sip.invest → vault.open_position → usdc.transfer
-→ All sub-calls covered by one Freighter signature (Soroban auth tree)
-→ sip.next_due += period
-→ sip.count++, sip.total_invested += amount
-```
+    Note over User,USDC: Each installment — Invest Now enabled when next_due ≤ ledger.timestamp
 
-**SIP Data Structure:**
-```
-Sip {
-  id:              u64
-  user:            Address
-  asset:           u32       // 0=sAAPL, 1=sTSLA, 2=sNVDA, ...
-  amount:          i128      // USDC per installment (7 decimals)
-  period:          u64       // seconds between installments
-  next_due:        u64       // ledger timestamp — invest() reverts if too early
-  count:           u32       // total installments completed
-  total_invested:  i128      // cumulative USDC invested
-  active:          bool
-}
+    User->>FE: Click Invest Now
+    FE->>FW: Sign invest tx
+    FW-->>FE: One signature covers full cross-contract chain
+    FE->>SIP: invest(sip_id)
+    Note over SIP,USDC: Soroban auth tree — one signature<br/>covers sip → vault → usdc
+    SIP->>SV: open_position(asset, LONG, 1x, amount)
+    SV->>USDC: transfer(user → vault, amount)
+    USDC-->>SV: Confirmed
+    SV-->>SIP: position_id
+    SIP->>SIP: next_due += period · count++ · total_invested += amount
+    SIP-->>FE: Success
+    FE-->>User: Position opened — next installment due in [period]
 ```
 
 ---
@@ -417,22 +412,15 @@ Ztellar-Edge/
 ├── contracts/                         # Soroban workspace (Rust)
 │   ├── Cargo.toml                     # Workspace root
 │   ├── rust-toolchain.toml            # Pinned toolchain for wasm32v1-none
-│   ├── zk_verifier/
-│   │   └── src/lib.rs                 # BLS12-381 Groth16 verifier → tier_manager
-│   ├── tier_manager/
-│   │   └── src/lib.rs                 # wallet → (tier, expiry, nullifier) storage
-│   ├── synth_vault/
-│   │   └── src/lib.rs                 # 12-asset vault, leverage enforcement, USDC settle
-│   ├── synth_token/
-│   │   └── src/lib.rs                 # SEP-0041 fungible token (sAAPL / sTSLA / sNVDA)
-│   ├── synth_sip/
-│   │   └── src/lib.rs                 # SIP — recurring vault.open_position calls
-│   ├── scripts/
-│   │   ├── deploy.js                  # Deploy full suite; writes frontend/.env.local
-│   │   ├── deploy_sip.js              # Deploy SIP contract standalone
-│   │   └── init_prices.js             # Initialize vault price oracle
-│   └── target/
-│       └── wasm32v1-none/release/     # Compiled WASM artifacts
+│   ├── zk_verifier/src/lib.rs         # BLS12-381 Groth16 verifier → tier_manager
+│   ├── tier_manager/src/lib.rs        # wallet → (tier, expiry, nullifier) storage
+│   ├── synth_vault/src/lib.rs         # 12-asset vault, leverage enforcement, USDC settle
+│   ├── synth_token/src/lib.rs         # SEP-0041 fungible token (sAAPL / sTSLA / sNVDA)
+│   ├── synth_sip/src/lib.rs           # SIP — recurring vault.open_position calls
+│   └── scripts/
+│       ├── deploy.js                  # Deploy full suite; writes frontend/.env.local
+│       ├── deploy_sip.js              # Deploy SIP contract standalone
+│       └── init_prices.js             # Initialize vault price oracle
 │
 └── frontend/                          # Next.js 14 dApp
     ├── app/
@@ -444,10 +432,6 @@ Ztellar-Edge/
     │   └── api/
     │       ├── score/route.ts         # Wallet behavior scoring via Stellar Horizon
     │       └── prices/route.ts        # Price oracle → vault.set_prices every 60s
-    ├── components/
-    │   ├── app/app-nav.tsx            # Navigation (Trade · Portfolio · SIP · Prove)
-    │   ├── landing/                   # Animated landing sections
-    │   └── ui/                        # Shared UI primitives (shadcn/ui)
     ├── hooks/
     │   ├── use-positions.ts           # Open positions, close, PnL polling
     │   ├── use-sip.ts                 # SIP CRUD + invest
@@ -477,7 +461,7 @@ Ztellar-Edge/
 | Wallet | Freighter (`@stellar/freighter-api`) |
 | Stellar SDK | `@stellar/stellar-sdk` |
 | Price oracle | Next.js API route · Coinbase Data API · Yahoo Finance |
-| Settlement token | Circle Testnet USDC · Stellar Asset Contract (SAC, 7 decimals) |
+| Settlement | Circle Testnet USDC · Stellar Asset Contract (SAC, 7 decimals) |
 | Testnet | Stellar Testnet · Soroban RPC · Stellar Expert |
 
 ---
@@ -487,12 +471,9 @@ Ztellar-Edge/
 ### Prerequisites
 
 - Node.js 20+
-- Rust with `wasm32v1-none` target:
-  ```bash
-  rustup target add wasm32v1-none
-  ```
+- Rust with `wasm32v1-none` target: `rustup target add wasm32v1-none`
 - [Freighter](https://freighter.app) browser extension → Settings → Enable Testnet
-- Stellar testnet wallet funded with XLM via [Stellar Friendbot](https://friendbot.stellar.org)
+- Stellar testnet XLM from [Stellar Friendbot](https://friendbot.stellar.org)
 - Testnet USDC from [Circle's faucet](https://faucet.circle.com)
 
 ### Install and Run
@@ -507,7 +488,7 @@ The price oracle runs as a Next.js API route — no separate process needed.
 
 ### Environment
 
-**`frontend/.env.local`** is written automatically by the deploy script. For local dev against the already-deployed contracts, use:
+**`frontend/.env.local`** — copy this for local dev against the deployed contracts:
 
 ```env
 NEXT_PUBLIC_STELLAR_NETWORK=testnet
@@ -524,59 +505,17 @@ NEXT_PUBLIC_SYNTH_SIP_CONTRACT_ID=CAQKC2LHNM7SCEK7FR6K2ET2JOBLDIXN27JQUMEZKJT7LL
 ADMIN_SECRET=<vault admin keypair for price oracle>
 ```
 
-> `ADMIN_SECRET` is used exclusively in the `/api/prices` server-side route to push price updates to the vault. It never reaches the client.
-
-### Rebuild Contracts (only if modifying Rust)
-
-The full cargo path is required — `cargo` is not in the default shell `PATH` on Windows:
-
-```bash
-/c/Users/<you>/.cargo/bin/cargo build \
-  --target wasm32v1-none \
-  --release \
-  -p ztellar-synth-vault
-```
-
-Build contracts in dependency order: `synth_token` → `synth_vault` → `synth_sip` (SIP imports vault WASM at compile time via `contractimport!`).
-
 ---
 
 ## End-to-End Test Flow
 
-**1. Connect wallet**
-Navigate to the app. Click "Connect Freighter" → approve popup → your Stellar address appears in the nav.
-
-**2. Get testnet USDC**
-Visit [Circle faucet](https://faucet.circle.com), enter your Stellar testnet address, receive 10 USDC. It appears in your Freighter balance.
-
-**3. Prove Identity** → `/prove`
-- "Checking wallet activity..." — Horizon API reads your account (1–2s)
-- "Generating ZK proof..." — snarkjs Groth16 runs in-browser (5–15s)
-- "Submitting to Stellar..." — Freighter popup → approve
-- Tier badge appears in nav with your tier (1–4) and expiry
-
-**4. Open a position** → `/trade`
-- Select asset (e.g. sNVDA), LONG or SHORT
-- Enter USDC collateral amount
-- Drag leverage slider — capped by your on-chain tier
-- "Open Position" → Freighter popup → approve
-- Success toast shows TX hash with Stellar Expert link
-
-**5. View portfolio** → `/portfolio`
-- Open positions with live unrealized PnL (updates every 2s)
-- Active SIPs with next-due countdown
-- Realized P&L from closed trade history
-
-**6. Create a SIP** → `/sip`
-- Select asset, USDC amount, frequency (1 min testnet / daily / weekly / monthly)
-- "Create SIP" → Freighter → approve
-- Card appears showing `next_due` time and "Invest Now" button
-- "Invest Now" (active when `next_due ≤ now`) → Freighter → one signature covers the full `sip → vault → usdc` chain
-
-**7. Close a position** → `/portfolio` or `/trade`
-- "Close" on any open position → Freighter → approve
-- Realized PnL shown in toast
-- Trade appended to history in Portfolio page
+1. **Connect wallet** — click "Connect Freighter" → approve → Stellar address appears in nav
+2. **Get testnet USDC** — [Circle faucet](https://faucet.circle.com) → paste Stellar testnet address → receive 10 USDC
+3. **Prove Identity** (`/prove`) → oracle scores wallet → snarkjs Groth16 in browser (5–15s) → Freighter sign → tier badge in nav
+4. **Open a position** (`/trade`) → select asset · direction · leverage (capped by tier) → Freighter sign → success toast with TX hash + Stellar Expert link
+5. **View portfolio** (`/portfolio`) → live unrealized PnL every 2s · active SIPs with next-due countdown · closed trade history
+6. **Create a SIP** (`/sip`) → configure asset · amount · period → Freighter sign → "Invest Now" button active when `next_due ≤ now`
+7. **Close a position** → "Close" on any position card → Freighter sign → realized PnL in toast → trade appended to history
 
 ---
 
@@ -590,11 +529,7 @@ node scripts/compile.js       # circom → .wasm + .r1cs
 node scripts/setup.js         # ptau ceremony → .zkey + verification_key.json
 ```
 
-After regeneration:
-1. Copy `tier_proof.wasm` and `tier_proof.zkey` → `frontend/public/circuits/`
-2. Update `circuits/keys/verification_key.json`
-3. Redeploy `zk_verifier` — its verifying key is baked in at `init()` time
-4. Update `NEXT_PUBLIC_ZK_VERIFIER_CONTRACT_ID` in `frontend/.env.local`
+After regeneration: copy artifacts to `frontend/public/circuits/`, redeploy `zk_verifier` with the new verifying key, update `NEXT_PUBLIC_ZK_VERIFIER_CONTRACT_ID`.
 
 ---
 
